@@ -2,26 +2,38 @@
 
 Run multiple OpenClaw instances with Docker.
 
+## Installation
+
+```bash
+# Global installation
+npm install -g polyclaw
+
+# Or as a dev dependency in your project
+npm install -D polyclaw
+```
+
 ## Quick Start
+
+Assuming global installation:
 
 ```bash
 # Initialize in your project directory
-npx polyclaw init
+polyclaw init
 
 # Edit .env with your API keys
 # Edit polyclaw.json5 to configure instances
 
 # Start containers (builds image if needed)
-npx polyclaw start
+polyclaw start
 
 # View status
-npx polyclaw status
+polyclaw status
 
 # View logs
-npx polyclaw logs -f
+polyclaw logs -f
 
 # Stop containers
-npx polyclaw stop
+polyclaw stop
 ```
 
 ## What `start` Does
@@ -31,6 +43,26 @@ npx polyclaw stop
 3. **Creates instance folders** with initial config
 4. **Generates `docker-compose.yml`**
 5. **Starts containers** in detached mode
+
+## Directory Structure
+
+After running `polyclaw start`, your project will look like:
+
+```
+myproject/
+├── polyclaw.json5      # Your configuration
+├── .env                # API keys and secrets
+├── docker-compose.yml  # Generated (don't edit)
+└── instances/          # Persistent data per instance
+    ├── dev/
+    │   ├── config/     # OpenClaw config (bound to container)
+    │   └── workspace/  # User files and data
+    └── prod/
+        ├── config/
+        └── workspace/
+```
+
+The `instances/` folder is bound to each container. Data persists across restarts.
 
 ## Commands
 
@@ -74,14 +106,38 @@ npx polyclaw stop
 
 ```json5
 {
-  "project": "openclaw",
+  "project": "myproject",
 
+  // Base config: applies to ALL instances
+  "config": {
+    "tools": {
+      "profile": "coding",
+      "exec": {
+        "security": "allowlist",
+        "safeBins": ["ls", "cat", "git", "npm"]
+      }
+    }
+  },
+
+  // Each instance gets its own container and port
+  // Can override base config as needed
   "instances": {
-    "main": {
-      "port": 18789
+    "dev": {
+      "port": 18789,
+      "config": {
+        "apiKey": "${ANTHROPIC_API_KEY_DEV}",  // Different API key
+        "tools": {
+          "exec": { "security": "full" }  // Override: allow all commands
+        }
+      }
     },
-    "secondary": {
-      "port": 18790
+    "prod": {
+      "port": 18790,
+      "config": {
+        "apiKey": "${ANTHROPIC_API_KEY_PROD}",
+        "model": "claude-sonnet-4-20250514"  // Better model for prod
+      }
+      // Inherits base tools config (restricted exec)
     }
   }
 }
@@ -92,7 +148,8 @@ npx polyclaw stop
 Create a `.env` file with:
 
 ```bash
-ANTHROPIC_API_KEY=sk-ant-api03-...
+ANTHROPIC_API_KEY_DEV=sk-ant-...
+ANTHROPIC_API_KEY_PROD=sk-ant-...
 BRAVE_API_KEY=...  # Optional: for web search
 ```
 

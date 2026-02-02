@@ -36,13 +36,37 @@ npx polyclaw stop
 
 | Command | Description |
 |---------|-------------|
-| `init` | Copy templates to current directory |
+| `init` | Initialize polyclaw in current directory |
 | `start` | Build image + sync + generate + start containers |
 | `stop` | Stop and remove containers |
-| `logs [-f]` | View container logs |
 | `status` | Show infrastructure status |
+| `logs [instance]` | View container logs |
+| `tail [instance]` | Follow logs (shortcut for `logs -f`) |
+| `open [instance]` | Open web UI in browser |
+| `shell [instance]` | Open interactive shell in a container |
 | `generate` | Regenerate docker-compose.yml |
 | `configure` | Apply config to running containers |
+| `build` | Build or rebuild the Docker image |
+
+### Options
+
+**Global:**
+- `-c, --config <path>` - Path to polyclaw.json5 config file
+
+**start:**
+- `--no-detach` - Run in foreground
+- `--recreate` - Force recreate containers
+- `--openclaw-path <path>` - Path to openclaw repo
+
+**logs:**
+- `-f, --follow` - Follow log output
+- `-n, --tail <lines>` - Number of lines to show
+
+**tail:**
+- `-n, --lines <count>` - Number of lines (default: 100)
+
+**build:**
+- `--openclaw-path <path>` - Path to openclaw repo
 
 ## Configuration
 

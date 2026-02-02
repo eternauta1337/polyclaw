@@ -10,7 +10,7 @@ import chalk from "chalk";
 import type { ZodType } from "zod";
 
 // Paths
-const OPENCLAW_DIR = join(homedir(), ".openclaw", "openclaw");
+const OPENCLAW_DIR = join(homedir(), ".polyclaw", "openclaw");
 const SCHEMA_PATH = join(OPENCLAW_DIR, "dist", "config", "zod-schema.js");
 const OPENCLAW_REPO = "https://github.com/openclaw/openclaw.git";
 
@@ -18,10 +18,10 @@ const OPENCLAW_REPO = "https://github.com/openclaw/openclaw.git";
 let OpenClawSchema: ZodType | null = null;
 
 /**
- * Ensure openclaw is installed and built at ~/.openclaw/openclaw/
+ * Ensure openclaw is installed and built at ~/.polyclaw/openclaw/
  */
 export function ensureOpenclawInstalled(): boolean {
-  const parentDir = join(homedir(), ".openclaw");
+  const parentDir = join(homedir(), ".polyclaw");
 
   // Clone if not exists
   if (!existsSync(OPENCLAW_DIR)) {

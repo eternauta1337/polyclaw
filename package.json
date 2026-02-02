@@ -1,0 +1,61 @@
+{
+  "name": "polyclaw",
+  "version": "0.1.0",
+  "description": "Run multiple OpenClaw instances with Docker",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "polyclaw": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "templates"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "cli": "tsx src/cli.ts",
+    "test": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "openclaw",
+    "docker",
+    "ai",
+    "agent",
+    "infrastructure"
+  ],
+  "author": "eternauta1337",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eternauta1337/polyclaw.git"
+  },
+  "homepage": "https://github.com/eternauta1337/polyclaw#readme",
+  "bugs": {
+    "url": "https://github.com/eternauta1337/polyclaw/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "chalk": "^5.4.1",
+    "commander": "^14.0.0",
+    "dotenv": "^16.4.7",
+    "json5": "^2.2.3",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}

@@ -1,0 +1,10 @@
+# OpenClaw Docker gitignore
+
+# Environment variables (contains secrets)
+.env
+
+# Generated files
+docker-compose.yml
+
+# Instance data
+instances/

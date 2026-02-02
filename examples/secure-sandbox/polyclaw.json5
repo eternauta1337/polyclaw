@@ -1,0 +1,95 @@
+{
+  // ============================================================
+  // Secure Sandbox Example
+  // ============================================================
+  // Demonstrates security isolation: admin (full access) vs user (restricted)
+  //
+  // Run with:
+  //   npx polyclaw start
+  //
+  // Test:
+  //   - Admin (port 18791): can execute any command
+  //   - User (port 18792): cannot execute commands, only messaging tools
+
+  "project": "openclaw-secure",
+
+  // ------------------------------------------------------------
+  // Global config: applies to ALL instances as baseline
+  // Individual instances can override these settings
+  // ------------------------------------------------------------
+  "config": {
+    "tools": {
+      // "minimal" = bare minimum tools (no exec, no write, no browser)
+      // Other options: "coding", "messaging", "full"
+      "profile": "minimal",
+
+      // Disable elevated mode globally (no sudo-like escalation)
+      "elevated": { "enabled": false },
+
+      // Exec restrictions (applies when exec is allowed)
+      "exec": {
+        // "allowlist" = only safeBins allowed, "full" = everything, "deny" = nothing
+        "security": "allowlist",
+        // "off" = don't ask user, "on-miss" = ask if not in allowlist, "always" = always ask
+        "ask": "off",
+        // Commands allowed when security=allowlist
+        "safeBins": ["ls", "cat", "head", "tail"]
+      }
+    },
+
+    "agents": {
+      "defaults": {
+        // NOTE: sandbox.mode requires Docker socket access from inside container
+        // For containerized deployments, use tools.deny for security instead
+        "sandbox": { "mode": "off" }
+      }
+    }
+  },
+
+  // ------------------------------------------------------------
+  // Instances: each gets its own container, port, and config
+  // ------------------------------------------------------------
+  "instances": {
+
+    // ADMIN: Full access for trusted operators
+    // Override global restrictions with permissive settings
+    "admin": {
+      "port": 18791,
+      "config": {
+        "tools": {
+          "profile": "full",      // All tools available
+          "exec": {
+            "security": "full",   // Can run any command
+            "ask": "off"
+          }
+        },
+        "agents": {
+          "defaults": {
+            "sandbox": { "mode": "off" }  // No sandboxing
+          }
+        }
+      }
+    },
+
+    // USER: Restricted access for untrusted users
+    // Inherits global config + adds explicit denials
+    "user": {
+      "port": 18792,
+      "config": {
+        "tools": {
+          "profile": "messaging",  // Only messaging tools
+          // Explicit deny list - these tools are blocked even if profile allows them
+          "deny": ["exec", "write", "gateway", "cron", "browser"]
+        },
+        "agents": {
+          "defaults": {
+            // Sandbox disabled - security via deny list instead
+            // (sandbox.mode: "all" requires Docker socket access)
+            "sandbox": { "mode": "off" }
+          }
+        }
+      }
+    }
+
+  }
+}

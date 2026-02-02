@@ -1,0 +1,11 @@
+{
+  // Single Instance Example
+
+  "project": "openclaw-single",
+
+  "instances": {
+    "main": {
+      "port": 18789
+    }
+  }
+}

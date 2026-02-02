@@ -1,0 +1,63 @@
+{
+  // ============================================================
+  // Multi-Tenant Example
+  // ============================================================
+  // Run multiple OpenClaw instances with different models
+  // Each instance is isolated with its own workspace and config
+  //
+  // Run with:
+  //   npx polyclaw start
+  //
+  // Access:
+  //   - dev (port 18791): Claude Sonnet - fast, cost-effective
+  //   - pro (port 18792): Claude Opus - most capable
+  //   - alt (port 18793): GPT-4o - alternative provider
+
+  "project": "openclaw-multi",
+
+  // ------------------------------------------------------------
+  // Instances: each gets its own container, port, and model
+  // ------------------------------------------------------------
+  "instances": {
+
+    // DEV: Fast iteration with Claude Sonnet
+    "dev": {
+      "port": 18791,
+      "config": {
+        "agents": {
+          "defaults": {
+            // Model format: "provider/model-name"
+            // Anthropic: claude-sonnet-4-5, claude-opus-4-5, claude-haiku-3-5
+            "model": { "primary": "anthropic/claude-sonnet-4-5" }
+          }
+        }
+      }
+    },
+
+    // PRO: Maximum capability with Claude Opus
+    "pro": {
+      "port": 18792,
+      "config": {
+        "agents": {
+          "defaults": {
+            "model": { "primary": "anthropic/claude-opus-4-5" }
+          }
+        }
+      }
+    },
+
+    // ALT: Alternative provider (OpenAI)
+    "alt": {
+      "port": 18793,
+      "config": {
+        "agents": {
+          "defaults": {
+            // OpenAI models: gpt-4o, gpt-4-turbo, gpt-3.5-turbo
+            "model": { "primary": "openai/gpt-4o" }
+          }
+        }
+      }
+    }
+
+  }
+}

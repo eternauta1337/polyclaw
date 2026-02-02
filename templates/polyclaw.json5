@@ -1,0 +1,15 @@
+{
+  // Polyclaw Configuration
+
+  "project": "openclaw",
+
+  "instances": {
+    "main": {
+      "port": 18789
+    }
+    // Add more instances:
+    // "secondary": {
+    //   "port": 18790
+    // }
+  }
+}

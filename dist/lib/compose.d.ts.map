@@ -1,1 +1,0 @@
-{"version":3,"file":"compose.d.ts","sourceRoot":"","sources":["../../src/lib/compose.ts"],"names":[],"mappings":"AAAA;;GAEG;AAMH,OAAO,KAAK,EAAE,WAAW,EAAE,WAAW,EAAE,MAAM,aAAa,CAAC;AAiC5D;;GAEG;AACH,wBAAgB,sBAAsB,CACpC,MAAM,EAAE,WAAW,EACnB,OAAO,EAAE,MAAM,GACd,MAAM,CA6CR;AAED;;GAEG;AACH,wBAAgB,mBAAmB,CACjC,MAAM,EAAE,WAAW,EACnB,KAAK,EAAE,WAAW,GACjB,IAAI,CAUN"}

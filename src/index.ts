@@ -16,6 +16,7 @@ export {
   loadConfig,
   resolveConfigPaths,
   expandEnvVars,
+  expandInstanceEnvVars,
   getPath,
   DEFAULTS,
 } from "./lib/config.js";

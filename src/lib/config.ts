@@ -58,9 +58,14 @@ export const DEFAULTS = {
 
 /**
  * Expand environment variables in strings: ${VAR} -> process.env.VAR
+ * Skips variables containing $NAME (for instance-specific expansion later)
  */
 export function expandEnvVars(value: unknown): unknown {
   if (typeof value === "string") {
+    // Skip expansion if contains $NAME (will be expanded per-instance later)
+    if (value.includes("$NAME")) {
+      return value;
+    }
     return value.replace(/\$\{(\w+)\}/g, (_, name) => process.env[name] || "");
   }
   if (Array.isArray(value)) {
@@ -70,6 +75,32 @@ export function expandEnvVars(value: unknown): unknown {
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value)) {
       result[k] = expandEnvVars(v);
+    }
+    return result;
+  }
+  return value;
+}
+
+/**
+ * Expand instance-specific variables: $NAME -> INSTANCENAME (uppercase)
+ * Then expand environment variables: ${VAR} -> process.env.VAR
+ */
+export function expandInstanceEnvVars(value: unknown, instanceName: string): unknown {
+  const upperName = instanceName.toUpperCase();
+  
+  if (typeof value === "string") {
+    // Replace $NAME with instance name (uppercase)
+    const withName = value.replace(/\$NAME/g, upperName);
+    // Then expand environment variables
+    return withName.replace(/\$\{(\w+)\}/g, (_, name) => process.env[name] || "");
+  }
+  if (Array.isArray(value)) {
+    return value.map((v) => expandInstanceEnvVars(v, instanceName));
+  }
+  if (value && typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      result[k] = expandInstanceEnvVars(v, instanceName);
     }
     return result;
   }

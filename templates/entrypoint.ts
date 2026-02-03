@@ -8,20 +8,30 @@
  * 2. Starts the gateway with passed arguments
  */
 
-import { spawn } from "node:child_process";
+import { execSync, spawn, spawnSync } from "node:child_process";
 import {
   existsSync,
   lstatSync,
   mkdirSync,
   readdirSync,
+  readFileSync,
   rmSync,
   symlinkSync,
+  writeFileSync,
 } from "node:fs";
 
 const WORKSPACE_DIR = "/home/node/.openclaw/workspace";
 const SKILLS_DIR = `${WORKSPACE_DIR}/skills`;
 const BUNDLED_SKILLS = "/app/skills";
 const CUSTOM_SKILLS = "/skills-custom";
+const CONFIG_DIR = "/home/node/.openclaw";
+const SERVICES_FILE = `${CONFIG_DIR}/services.json`;
+
+interface ServiceConfig {
+  name: string;
+  command: string;
+  condition?: string;
+}
 
 function setupSkills(): void {
   // Create workspace directory if it doesn't exist
@@ -69,7 +79,84 @@ function setupSkills(): void {
   }
 }
 
-function startGateway(args: string[]): void {
+/**
+ * Generate ecosystem config and start all services via pm2-runtime
+ * This makes pm2 the main process (PID 1) managing both gateway and services
+ */
+function startWithPm2(args: string[]): void {
+  // Check if pm2 is available
+  const pm2Check = spawnSync("which", ["pm2"]);
+  const hasPm2 = pm2Check.status === 0;
+
+  if (!hasPm2) {
+    // Fallback: run gateway directly without pm2
+    console.log("[entrypoint] pm2 not available, running gateway directly");
+    startGatewayDirect(args);
+    return;
+  }
+
+  // Build apps list starting with gateway
+  const apps: Array<Record<string, unknown>> = [
+    {
+      name: "gateway",
+      script: "dist/index.js",
+      args: ["gateway", ...args].join(" "),
+      cwd: "/app",
+      interpreter: "node",
+      autorestart: true,
+      restart_delay: 1000,
+    },
+  ];
+
+  // Add custom services if configured
+  if (existsSync(SERVICES_FILE)) {
+    const services: ServiceConfig[] = JSON.parse(
+      readFileSync(SERVICES_FILE, "utf-8")
+    );
+
+    for (const svc of services) {
+      // Create wrapper script that checks condition before running
+      const wrapperPath = `/tmp/svc-${svc.name}.sh`;
+      const conditionCheck = svc.condition
+        ? `if [ ! -f "${svc.condition.replace("file:", "")}" ]; then echo "[${svc.name}] Condition not met, waiting..."; sleep 60; exit 0; fi`
+        : "";
+
+      const wrapperScript = `#!/bin/bash
+${conditionCheck}
+exec ${svc.command}
+`;
+      writeFileSync(wrapperPath, wrapperScript, { mode: 0o755 });
+
+      apps.push({
+        name: svc.name,
+        script: wrapperPath,
+        interpreter: "/bin/bash",
+        autorestart: true,
+        restart_delay: 5000,
+      });
+    }
+  }
+
+  const serviceCount = apps.length - 1; // excluding gateway
+  console.log(`[entrypoint] Starting gateway + ${serviceCount} service(s) via pm2...`);
+
+  // Write ecosystem file
+  const ecosystem = { apps };
+  const ecosystemPath = "/tmp/ecosystem.config.json";
+  writeFileSync(ecosystemPath, JSON.stringify(ecosystem, null, 2));
+
+  // Use pm2-runtime as the main process (stays in foreground)
+  // This blocks until pm2-runtime exits
+  execSync(`pm2-runtime start ${ecosystemPath}`, {
+    stdio: "inherit",
+    cwd: "/app",
+  });
+}
+
+/**
+ * Fallback: run gateway directly without pm2
+ */
+function startGatewayDirect(args: string[]): void {
   console.log(`[entrypoint] Starting gateway...`);
 
   const gateway = spawn("node", ["dist/index.js", "gateway", ...args], {
@@ -90,7 +177,7 @@ function startGateway(args: string[]): void {
 function main(): void {
   const args = process.argv.slice(2);
   setupSkills();
-  startGateway(args);
+  startWithPm2(args);
 }
 
 main();

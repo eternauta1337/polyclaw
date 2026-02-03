@@ -169,6 +169,40 @@ Use `${VAR}` in your config to reference environment variables:
 }
 ```
 
+### Background Services
+
+Run additional processes alongside the gateway using pm2. Services are defined globally and run in all instances.
+
+```json5
+{
+  "services": [
+    {
+      "name": "wacli-sync",
+      "command": "wacli sync --follow",
+      "condition": "file:/home/node/.wacli/store.db"  // Only run if file exists
+    },
+    {
+      "name": "my-daemon",
+      "command": "/usr/local/bin/mydaemon --config /app/config.json"
+    }
+  ]
+}
+```
+
+**Fields:**
+- `name` - Process name (shown in pm2 list)
+- `command` - Command to run
+- `condition` - Optional. Currently supports `file:<path>` to only start when file exists
+
+**How it works:**
+- pm2-runtime runs as PID 1, managing both the gateway and services
+- Services with conditions are checked every 60 seconds until the condition is met
+- All processes auto-restart on failure
+- View status: `docker exec <container> pm2 list`
+- View logs: `docker exec <container> pm2 logs <service-name>`
+
+**Note:** The Docker image must include pm2. The default `Dockerfile.extended` template includes it.
+
 ## Requirements
 
 - Node.js >= 22

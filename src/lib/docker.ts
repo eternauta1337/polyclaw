@@ -169,6 +169,28 @@ export function buildImage(imageName: string, openclawPath: string): void {
 }
 
 /**
+ * Build an extended Docker image from a Dockerfile.extended
+ */
+export function buildExtendedImage(imageName: string, baseDir: string): void {
+  const dockerfilePath = join(baseDir, "Dockerfile.extended");
+
+  if (!existsSync(dockerfilePath)) {
+    return;
+  }
+
+  console.log(chalk.green(`=== Building extended image ${imageName} ===`));
+  console.log(chalk.dim(`  From: ${dockerfilePath}`));
+
+  execSync(`docker build -f Dockerfile.extended -t ${imageName} .`, {
+    cwd: baseDir,
+    stdio: "inherit",
+    encoding: "utf-8",
+  });
+
+  console.log(chalk.green(`  Image ${imageName} built successfully`));
+}
+
+/**
  * Ensure the Docker image exists, building it if necessary
  */
 export function ensureImage(imageName: string, openclawPath?: string): void {

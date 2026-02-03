@@ -154,6 +154,12 @@ export function syncInstanceFolders(
     } else {
       console.log(`  ${chalk.green("OK")} ${name} already exists`);
     }
+
+    // Write services.json if services are configured
+    if (config.services && config.services.length > 0) {
+      const servicesFile = join(configDir, "services.json");
+      writeFileSync(servicesFile, JSON.stringify(config.services, null, 2));
+    }
   }
 
   console.log(chalk.green("Sync completed."));

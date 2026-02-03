@@ -9,11 +9,26 @@ import { config as loadDotenv } from "dotenv";
 import chalk from "chalk";
 
 // Types for configuration
+export interface VolumeMount {
+  host: string;
+  container: string;
+  mode?: "ro" | "rw"; // default: rw
+}
+
+export interface ServiceConfig {
+  name: string;
+  command: string;
+  // Condition to check before starting (e.g., "file:/path/to/file")
+  condition?: string;
+}
+
 export interface InstanceConfig {
   port: number;
   token?: string;
   // Per-instance config overrides (merged with global config)
   config?: Record<string, unknown>;
+  // Extra volumes to mount
+  volumes?: VolumeMount[];
 }
 
 // InfraConfig: polyclaw extensions + openclaw config passthrough
@@ -24,7 +39,11 @@ export interface InfraConfig {
   docker?: {
     image?: string;
     skills_path?: string;
+    // Global volumes applied to all instances
+    volumes?: VolumeMount[];
   };
+  // Background services to run in containers (managed by pm2)
+  services?: ServiceConfig[];
   // OpenClaw config - passed through directly to all instances
   config?: Record<string, unknown>;
 }

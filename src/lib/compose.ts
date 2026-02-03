@@ -70,6 +70,19 @@ services:
     const skillsVolume = skillsPath
       ? `\n      - ${skillsPath}:/skills-custom:ro`
       : "";
+
+    // Combine global volumes + instance-specific volumes
+    const globalVolumes = config.docker?.volumes || [];
+    const instanceVolumes = inst.volumes || [];
+    const allVolumes = [...globalVolumes, ...instanceVolumes];
+
+    const extraVolumes = allVolumes
+      .map((v) => {
+        const mode = v.mode || "rw";
+        return `\n      - "${v.host}:${v.container}:${mode}"`;
+      })
+      .join("");
+
     compose += `  ${name}:
     image: ${image}
     container_name: ${project}-${name}
@@ -78,7 +91,7 @@ services:
 ${envLines}
     volumes:
       - ./instances/${name}/config:/home/node/.openclaw
-      - ./instances/${name}/workspace:/home/node/.openclaw/workspace${skillsVolume}
+      - ./instances/${name}/workspace:/home/node/.openclaw/workspace${skillsVolume}${extraVolumes}
       - ${ENTRYPOINT_PATH}:/app/entrypoint.ts:ro
     ports:
       - "${inst.port}:18789"

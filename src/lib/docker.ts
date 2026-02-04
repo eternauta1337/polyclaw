@@ -260,14 +260,35 @@ export function buildExtendedImage(imageName: string, baseDir: string): void {
 /**
  * Ensure the Docker image exists, building it if necessary
  */
-export function ensureImage(imageName: string, openclawPath?: string): void {
+export function ensureImage(
+  imageName: string,
+  options: { openclawPath?: string; baseDir?: string } = {}
+): void {
   if (imageExists(imageName)) {
     return;
   }
 
-  console.log(chalk.yellow(`  Image ${imageName} not found, building...`));
+  const { openclawPath, baseDir } = options;
   const repoPath = findOpenclawRepo(openclawPath);
-  buildImage(imageName, repoPath);
+
+  // Check if this is an extended image (has Dockerfile.extended)
+  const hasExtended = baseDir && existsSync(join(baseDir, "Dockerfile.extended"));
+  const isExtendedImage = imageName !== "openclaw:local" && hasExtended;
+
+  if (isExtendedImage) {
+    // Build base image first if it doesn't exist
+    if (!imageExists("openclaw:local")) {
+      console.log(chalk.yellow(`  Base image openclaw:local not found, building...`));
+      buildImage("openclaw:local", repoPath);
+      console.log();
+    }
+    // Then build extended image
+    console.log(chalk.yellow(`  Image ${imageName} not found, building...`));
+    buildExtendedImage(imageName, baseDir!);
+  } else {
+    console.log(chalk.yellow(`  Image ${imageName} not found, building...`));
+    buildImage(imageName, repoPath);
+  }
 }
 
 /**

@@ -17,7 +17,7 @@ export async function startCommand(
 ): Promise<void> {
   // Ensure Docker image exists
   const imageName = config.docker?.image || DEFAULTS.image;
-  ensureImage(imageName, options.openclawPath);
+  ensureImage(imageName, { openclawPath: options.openclawPath, baseDir: paths.baseDir });
 
   // Sync instance folders and configure
   syncInstanceFolders(config, paths);

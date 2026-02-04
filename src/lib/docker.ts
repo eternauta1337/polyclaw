@@ -3,14 +3,81 @@
  */
 
 import { execSync, spawn } from "node:child_process";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { fileURLToPath } from "node:url";
 import chalk from "chalk";
 import type { ConfigPaths } from "./config.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+export interface DockerStatus {
+  installed: boolean;
+  running: boolean;
+  error?: string;
+}
+
+/**
+ * Check if Docker is installed on the system
+ */
+export function isDockerInstalled(): boolean {
+  try {
+    execSync("docker --version", {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check if Docker daemon is running
+ */
+export function isDockerDaemonRunning(): boolean {
+  try {
+    execSync("docker info", {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check Docker availability and return status
+ */
+export function checkDocker(): DockerStatus {
+  if (!isDockerInstalled()) {
+    return {
+      installed: false,
+      running: false,
+      error: "Docker is not installed. Please install Docker Desktop from https://docker.com/products/docker-desktop",
+    };
+  }
+
+  if (!isDockerDaemonRunning()) {
+    return {
+      installed: true,
+      running: false,
+      error: "Docker daemon is not running. Please start Docker Desktop or run 'sudo systemctl start docker'",
+    };
+  }
+
+  return { installed: true, running: true };
+}
+
+/**
+ * Require Docker to be available, exit with error if not
+ */
+export function requireDocker(): void {
+  const status = checkDocker();
+  if (!status.running) {
+    console.error(chalk.red(`Error: ${status.error}`));
+    process.exit(1);
+  }
+}
 
 export interface DockerExecOptions {
   cwd?: string;

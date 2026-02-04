@@ -7,6 +7,7 @@
 import { Command } from "commander";
 import { existsSync } from "node:fs";
 import { loadConfig, resolveConfigPaths } from "./lib/config.js";
+import { requireDocker } from "./lib/docker.js";
 import { initCommand } from "./commands/init.js";
 import { generateCommand } from "./commands/generate.js";
 import { startCommand } from "./commands/start.js";
@@ -23,7 +24,7 @@ const program = new Command();
 program
   .name("polyclaw")
   .description("Run multiple OpenClaw instances with Docker")
-  .version("0.1.0");
+  .version(require("../package.json").version);
 
 // Global option for config file
 program.option(
@@ -69,6 +70,7 @@ program
   .option("--recreate", "Force recreate containers (use after rebuild)")
   .option("--openclaw-path <path>", "Path to openclaw repo (for building image)")
   .action(async (options) => {
+    requireDocker();
     const opts = program.opts();
     const paths = resolveConfigPaths(opts.config);
 
@@ -91,6 +93,7 @@ program
   .command("stop")
   .description("Stop and remove containers")
   .action(() => {
+    requireDocker();
     const opts = program.opts();
     const paths = resolveConfigPaths(opts.config);
     stopCommand(paths);
@@ -103,6 +106,7 @@ program
   .option("-f, --follow", "Follow log output")
   .option("-n, --tail <lines>", "Number of lines to show from the end")
   .action((service, options) => {
+    requireDocker();
     const opts = program.opts();
     const paths = resolveConfigPaths(opts.config);
     logsCommand(paths, {
@@ -116,7 +120,10 @@ program
 program
   .command("status")
   .description("Show infrastructure status")
-  .action(withConfig(statusCommand));
+  .action(withConfig((config, paths) => {
+    requireDocker();
+    return statusCommand(config, paths);
+  }));
 
 // generate command
 program
@@ -128,7 +135,10 @@ program
 program
   .command("configure")
   .description("Apply configuration to running containers")
-  .action(withConfig(configureCommand));
+  .action(withConfig((config, paths) => {
+    requireDocker();
+    return configureCommand(config, paths);
+  }));
 
 // open command
 program
@@ -153,6 +163,7 @@ program
   .description("Build or rebuild the Docker image")
   .option("--openclaw-path <path>", "Path to openclaw repo")
   .action((options) => {
+    requireDocker();
     const opts = program.opts();
     const paths = resolveConfigPaths(opts.config);
 
@@ -171,6 +182,7 @@ program
   .description("Follow logs from a container (shortcut for logs -f)")
   .option("-n, --lines <count>", "Number of lines to show", "100")
   .action((instance, options) => {
+    requireDocker();
     const opts = program.opts();
     const paths = resolveConfigPaths(opts.config);
     logsCommand(paths, {
@@ -185,6 +197,7 @@ program
   .command("shell [instance]")
   .description("Open interactive shell in a container")
   .action((instance) => {
+    requireDocker();
     const opts = program.opts();
     const paths = resolveConfigPaths(opts.config);
 

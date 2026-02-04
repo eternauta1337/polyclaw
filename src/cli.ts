@@ -5,7 +5,9 @@
  */
 
 import { Command } from "commander";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { loadConfig, resolveConfigPaths } from "./lib/config.js";
 import { requireDocker } from "./lib/docker.js";
 import { initCommand } from "./commands/init.js";
@@ -19,12 +21,15 @@ import { openCommand } from "./commands/open.js";
 import { buildCommand } from "./commands/build.js";
 import { shellCommand } from "./commands/shell.js";
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(readFileSync(join(__dirname, "../package.json"), "utf-8"));
+
 const program = new Command();
 
 program
   .name("polyclaw")
   .description("Run multiple OpenClaw instances with Docker")
-  .version(require("../package.json").version);
+  .version(pkg.version);
 
 // Global option for config file
 program.option(

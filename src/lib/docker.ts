@@ -264,11 +264,7 @@ export function ensureImage(
   imageName: string,
   options: { openclawPath?: string; baseDir?: string } = {}
 ): void {
-  console.log(chalk.dim(`  Checking if image ${imageName} exists...`));
-  const exists = imageExists(imageName);
-  console.log(chalk.dim(`  Image ${imageName}: ${exists ? "found" : "not found"}`));
-
-  if (exists) {
+  if (imageExists(imageName)) {
     return;
   }
 

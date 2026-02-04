@@ -49,7 +49,7 @@ export {
 export {
   validateOpenClawConfig,
   printValidationErrors,
-  ensureOpenclawInstalled,
+  isSchemaAvailable,
   type ValidationIssue,
   type ValidationResult,
 } from "./lib/validate.js";

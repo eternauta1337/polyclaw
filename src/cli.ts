@@ -93,6 +93,31 @@ program
     });
   });
 
+// restart command (alias for start --recreate)
+program
+  .command("restart")
+  .description("Restart containers (alias for start --recreate)")
+  .option("--no-detach", "Run in foreground instead of detached mode")
+  .option("--openclaw-path <path>", "Path to openclaw repo (for building image)")
+  .action(async (options) => {
+    requireDocker();
+    const opts = program.opts();
+    const paths = resolveConfigPaths(opts.config);
+
+    if (!existsSync(paths.configFile)) {
+      console.error(`Error: Config file not found: ${paths.configFile}`);
+      console.error("Run 'npx polyclaw init' to create one.");
+      process.exit(1);
+    }
+
+    const config = loadConfig(paths);
+    await startCommand(config, paths, {
+      detach: options.detach,
+      recreate: true,
+      openclawPath: options.openclawPath,
+    });
+  });
+
 // stop command
 program
   .command("stop")

@@ -7,7 +7,7 @@ import { join } from "node:path";
 import chalk from "chalk";
 import type { ConfigPaths, InfraConfig } from "../lib/config.js";
 import { DEFAULTS } from "../lib/config.js";
-import { findOpenclawRepo, buildImage, buildExtendedImage } from "../lib/docker.js";
+import { findOpenclawRepo, buildImage, buildExtendedImage, buildPolyclawBase, imageExists } from "../lib/docker.js";
 
 export function buildCommand(
   config: InfraConfig,
@@ -21,10 +21,15 @@ export function buildCommand(
   const hasExtended = existsSync(join(paths.baseDir, "Dockerfile.extended"));
 
   if (hasExtended && imageName !== DEFAULTS.image) {
-    // Build base image first, then extended
+    // Build base images first: openclaw:local -> polyclaw:base -> extended
     console.log(chalk.dim(`Building base image first (${DEFAULTS.image})...`));
     buildImage(DEFAULTS.image, repoPath);
     console.log();
+    // Build polyclaw:base (adds openclaw CLI wrapper)
+    if (!imageExists("polyclaw:base")) {
+      buildPolyclawBase();
+      console.log();
+    }
     buildExtendedImage(imageName, paths.baseDir);
   } else {
     // Just build the requested image

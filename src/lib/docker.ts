@@ -4,8 +4,8 @@
 
 import { execSync, spawn } from "node:child_process";
 import { join } from "node:path";
-import { existsSync, mkdirSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import chalk from "chalk";
 import type { ConfigPaths } from "./config.js";
 
@@ -236,6 +236,38 @@ export function buildImage(imageName: string, openclawPath: string): void {
 }
 
 /**
+ * Build polyclaw:base image from openclaw:local
+ * Adds common utilities like the openclaw CLI wrapper
+ */
+export function buildPolyclawBase(): void {
+  console.log(chalk.green(`=== Building polyclaw:base ===`));
+  console.log(chalk.dim(`  Adding openclaw CLI wrapper`));
+
+  // Create temp Dockerfile
+  const dockerfilePath = join(tmpdir(), "Dockerfile.polyclaw-base");
+  const dockerfileContent = `FROM openclaw:local
+USER root
+RUN echo '#!/bin/sh' > /usr/local/bin/openclaw && \\
+    echo 'exec node /app/openclaw.mjs "$@"' >> /usr/local/bin/openclaw && \\
+    chmod +x /usr/local/bin/openclaw
+USER node
+`;
+
+  writeFileSync(dockerfilePath, dockerfileContent);
+
+  try {
+    execSync(`docker build -f "${dockerfilePath}" -t polyclaw:base .`, {
+      cwd: tmpdir(),
+      stdio: "inherit",
+      encoding: "utf-8",
+    });
+    console.log(chalk.green(`  Image polyclaw:base built successfully`));
+  } finally {
+    unlinkSync(dockerfilePath);
+  }
+}
+
+/**
  * Build an extended Docker image from a Dockerfile.extended
  */
 export function buildExtendedImage(imageName: string, baseDir: string): void {
@@ -258,6 +290,26 @@ export function buildExtendedImage(imageName: string, baseDir: string): void {
 }
 
 /**
+ * Ensure the base images exist (openclaw:local -> polyclaw:base)
+ */
+export function ensureBaseImages(openclawPath?: string): void {
+  const repoPath = findOpenclawRepo(openclawPath);
+
+  // Build openclaw:local if needed
+  if (!imageExists("openclaw:local")) {
+    console.log(chalk.yellow(`Building base image openclaw:local...`));
+    buildImage("openclaw:local", repoPath);
+    console.log();
+  }
+
+  // Build polyclaw:base if needed (adds openclaw CLI wrapper)
+  if (!imageExists("polyclaw:base")) {
+    buildPolyclawBase();
+    console.log();
+  }
+}
+
+/**
  * Ensure the Docker image exists, building it if necessary
  */
 export function ensureImage(
@@ -269,23 +321,21 @@ export function ensureImage(
   }
 
   const { openclawPath, baseDir } = options;
-  const repoPath = findOpenclawRepo(openclawPath);
 
   // Check if this is an extended image (has Dockerfile.extended)
   const hasExtended = baseDir && existsSync(join(baseDir, "Dockerfile.extended"));
-  const isExtendedImage = imageName !== "openclaw:local" && hasExtended;
+  const isExtendedImage = imageName !== "openclaw:local" && imageName !== "polyclaw:base" && hasExtended;
 
   if (isExtendedImage) {
-    // Build base image first if it doesn't exist
-    if (!imageExists("openclaw:local")) {
-      console.log(chalk.yellow(`  Base image openclaw:local not found, building...`));
-      buildImage("openclaw:local", repoPath);
-      console.log();
-    }
+    // Ensure base images exist first
+    ensureBaseImages(openclawPath);
     // Then build extended image
     console.log(chalk.yellow(`  Image ${imageName} not found, building...`));
     buildExtendedImage(imageName, baseDir!);
+  } else if (imageName === "polyclaw:base") {
+    ensureBaseImages(openclawPath);
   } else {
+    const repoPath = findOpenclawRepo(openclawPath);
     console.log(chalk.yellow(`  Image ${imageName} not found, building...`));
     buildImage(imageName, repoPath);
   }

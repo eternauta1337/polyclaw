@@ -5,7 +5,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import JSON5 from "json5";
-import { config as loadDotenv } from "dotenv";
 import chalk from "chalk";
 
 // Types for configuration
@@ -57,50 +56,46 @@ export const DEFAULTS = {
 };
 
 /**
- * Expand environment variables in strings: ${VAR} -> process.env.VAR
- * Skips variables containing $NAME (for instance-specific expansion later)
+ * Parse a .env file and return key-value pairs.
+ * Does not modify process.env.
  */
-export function expandEnvVars(value: unknown): unknown {
-  if (typeof value === "string") {
-    // Skip expansion if contains $NAME (will be expanded per-instance later)
-    if (value.includes("$NAME")) {
-      return value;
+export function readEnvFile(filePath: string): Record<string, string> {
+  if (!existsSync(filePath)) return {};
+
+  const content = readFileSync(filePath, "utf-8");
+  const vars: Record<string, string> = {};
+
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)/);
+    if (match) {
+      vars[match[1]] = match[2];
     }
-    return value.replace(/\$\{(\w+)\}/g, (_, name) => process.env[name] || "");
   }
-  if (Array.isArray(value)) {
-    return value.map(expandEnvVars);
-  }
-  if (value && typeof value === "object") {
-    const result: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value)) {
-      result[k] = expandEnvVars(v);
-    }
-    return result;
-  }
-  return value;
+
+  return vars;
 }
 
 /**
- * Expand instance-specific variables: $NAME -> INSTANCENAME (uppercase)
- * Then expand environment variables: ${VAR} -> process.env.VAR
+ * Expand environment variables in strings using an explicit env source.
+ * Variables not found are kept as-is (for later expansion).
  */
-export function expandInstanceEnvVars(value: unknown, instanceName: string): unknown {
-  const upperName = instanceName.toUpperCase();
-  
+export function expandEnvVars(value: unknown, env: Record<string, string | undefined>): unknown {
   if (typeof value === "string") {
-    // Replace $NAME with instance name (uppercase)
-    const withName = value.replace(/\$NAME/g, upperName);
-    // Then expand environment variables
-    return withName.replace(/\$\{(\w+)\}/g, (_, name) => process.env[name] || "");
+    return value.replace(/\$\{(\w+)\}/g, (match, name) => {
+      const val = env[name];
+      return val !== undefined ? val : match;
+    });
   }
   if (Array.isArray(value)) {
-    return value.map((v) => expandInstanceEnvVars(v, instanceName));
+    return value.map((v) => expandEnvVars(v, env));
   }
   if (value && typeof value === "object") {
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value)) {
-      result[k] = expandInstanceEnvVars(v, instanceName);
+      result[k] = expandEnvVars(v, env);
     }
     return result;
   }
@@ -136,17 +131,17 @@ export function resolveConfigPaths(configPath?: string): ConfigPaths {
  * Load and parse configuration from JSON5 file
  */
 export function loadConfig(paths: ConfigPaths): InfraConfig {
-  // Load .env from the config directory
-  loadDotenv({ path: join(paths.baseDir, ".env") });
-
   if (!existsSync(paths.configFile)) {
     console.error(chalk.red(`Error: Configuration file not found: ${paths.configFile}`));
     process.exit(1);
   }
 
+  // Read global env vars from .env/.env.shared (used for config expansion only)
+  const sharedEnv = readEnvFile(join(paths.baseDir, ".env", ".env.shared"));
+
   const content = readFileSync(paths.configFile, "utf-8");
   const parsed = JSON5.parse(content);
-  return expandEnvVars(parsed) as InfraConfig;
+  return expandEnvVars(parsed, sharedEnv) as InfraConfig;
 }
 
 /**

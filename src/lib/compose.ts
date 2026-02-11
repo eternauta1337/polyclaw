@@ -30,33 +30,6 @@ function ensureEntrypoint(baseDir: string): void {
 }
 
 /**
- * Read .env file and extract variable names
- */
-function getEnvVarNames(baseDir: string): string[] {
-  const envPath = join(baseDir, ".env");
-  if (!existsSync(envPath)) {
-    return [];
-  }
-
-  const content = readFileSync(envPath, "utf-8");
-  const varNames: string[] = [];
-
-  for (const line of content.split("\n")) {
-    const trimmed = line.trim();
-    // Skip comments and empty lines
-    if (!trimmed || trimmed.startsWith("#")) continue;
-
-    // Extract variable name (before the =)
-    const match = trimmed.match(/^([A-Z_][A-Z0-9_]*)=/);
-    if (match) {
-      varNames.push(match[1]);
-    }
-  }
-
-  return varNames;
-}
-
-/**
  * Generate docker-compose.yml content from configuration
  */
 export function generateComposeContent(
@@ -80,10 +53,6 @@ name: ${project}
 services:
 `;
 
-  // Get env vars from .env file
-  const envVars = getEnvVarNames(baseDir);
-  const envLines = envVars.map((v) => `      ${v}: \${${v}}`).join("\n");
-
   for (const [name, inst] of Object.entries(config.instances)) {
     const skillsVolume = skillsPath
       ? `\n      - ${skillsPath}:/skills-custom:ro`
@@ -103,12 +72,22 @@ services:
       })
       .join("");
 
+    // Use env_file to pass environment variables to containers
+    // Global .env/.env.shared + per-instance .env/.env.{name}
+    const instanceEnvFile = `.env/.env.${name}`;
+    const hasInstanceEnv = existsSync(join(baseDir, instanceEnvFile));
+
+    const envFileLines = hasInstanceEnv
+      ? `\n      - ${instanceEnvFile}`
+      : "";
+
     compose += `  ${name}:
     image: ${image}
     container_name: ${project}-${name}
+    env_file:
+      - .env/.env.shared${envFileLines}
     environment:
       HOME: /home/node
-${envLines}
     volumes:
       - ./instances/${name}/config:/home/node/.openclaw
       - ./instances/${name}/workspace:/home/node/.openclaw/workspace${skillsVolume}${extraVolumes}

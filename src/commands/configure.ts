@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import chalk from "chalk";
 import type { ConfigPaths, InfraConfig } from "../lib/config.js";
-import { DEFAULTS, expandInstanceEnvVars } from "../lib/config.js";
+import { DEFAULTS, expandEnvVars, readEnvFile } from "../lib/config.js";
 import { validateOpenClawConfig, printValidationErrors } from "../lib/validate.js";
 
 /** Deep merge objects (b wins) */
@@ -76,8 +76,9 @@ export async function configureCommand(config: InfraConfig, paths: ConfigPaths):
     final = merge(final, (inst.config || {}) as Record<string, unknown>);
     final = merge(final, { gateway: { auth: { mode: "token", token } } });
 
-    // Expand instance-specific variables ($NAME -> INSTANCENAME)
-    final = expandInstanceEnvVars(final, name) as Record<string, unknown>;
+    // Expand remaining ${VAR} references using per-instance env file
+    const instanceEnv = readEnvFile(join(paths.baseDir, ".env", `.env.${name}`));
+    final = expandEnvVars(final, instanceEnv) as Record<string, unknown>;
 
     // Validate before writing
     const validation = await validateOpenClawConfig(final);

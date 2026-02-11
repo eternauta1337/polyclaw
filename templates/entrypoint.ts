@@ -10,15 +10,18 @@
 
 import { execSync, spawn, spawnSync } from "node:child_process";
 import {
+  chmodSync,
   existsSync,
   lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import { resolve } from "node:path";
 
 const WORKSPACE_DIR = "/home/node/.openclaw/workspace";
 const SKILLS_DIR = `${WORKSPACE_DIR}/skills`;
@@ -76,6 +79,64 @@ function setupSkills(): void {
     if (custom.length > 0) {
       console.log(`[entrypoint] ${custom.length} custom skills linked`);
     }
+  }
+
+  // Auto-link skill CLIs: scan skills for package.json with bin entries
+  // and create symlinks in /usr/local/bin so they're globally available
+  linkSkillBinaries();
+}
+
+const SKILL_BIN_DIR = "/home/node/.local/bin";
+
+function linkSkillBinaries(): void {
+  if (!existsSync(SKILLS_DIR)) return;
+
+  // Create user-writable bin directory and add to PATH
+  mkdirSync(SKILL_BIN_DIR, { recursive: true });
+  if (!process.env.PATH?.includes(SKILL_BIN_DIR)) {
+    process.env.PATH = `${SKILL_BIN_DIR}:${process.env.PATH}`;
+  }
+
+  let linked = 0;
+  for (const skill of readdirSync(SKILLS_DIR)) {
+    const skillDir = `${SKILLS_DIR}/${skill}`;
+    // Resolve symlink to actual path for reading files
+    let realDir: string;
+    try {
+      realDir = realpathSync(skillDir);
+    } catch {
+      continue;
+    }
+
+    const pkgPath = `${realDir}/package.json`;
+    if (!existsSync(pkgPath)) continue;
+
+    try {
+      const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+      if (!pkg.bin || typeof pkg.bin !== "object") continue;
+
+      for (const [name, binPath] of Object.entries(pkg.bin as Record<string, string>)) {
+        const target = resolve(realDir, binPath);
+        const link = `${SKILL_BIN_DIR}/${name}`;
+        if (!existsSync(target)) continue;
+
+        try {
+          // Remove existing link if present
+          if (existsSync(link)) rmSync(link);
+          symlinkSync(target, link);
+          chmodSync(target, 0o755);
+          linked++;
+        } catch (err: any) {
+          console.warn(`[entrypoint] Failed to link ${name}: ${err.message}`);
+        }
+      }
+    } catch {
+      // Invalid package.json, skip
+    }
+  }
+
+  if (linked > 0) {
+    console.log(`[entrypoint] ${linked} skill CLI(s) linked to ${SKILL_BIN_DIR}`);
   }
 }
 

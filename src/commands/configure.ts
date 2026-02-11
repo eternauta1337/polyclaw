@@ -8,6 +8,7 @@ import { randomBytes } from "node:crypto";
 import chalk from "chalk";
 import type { ConfigPaths, InfraConfig } from "../lib/config.js";
 import { DEFAULTS, expandEnvVars, readEnvFile } from "../lib/config.js";
+import { syncWorkspaceFiles } from "../lib/templates.js";
 import { validateOpenClawConfig, printValidationErrors } from "../lib/validate.js";
 
 /** Deep merge objects (b wins) */
@@ -27,6 +28,9 @@ function merge(a: Record<string, unknown>, b: Record<string, unknown>): Record<s
 }
 
 export async function configureCommand(config: InfraConfig, paths: ConfigPaths): Promise<boolean> {
+  // Sync project-level workspace files before writing config
+  syncWorkspaceFiles(config, paths);
+
   console.log(chalk.green("=== Configuring instances ==="));
 
   let hasErrors = false;
@@ -37,9 +41,7 @@ export async function configureCommand(config: InfraConfig, paths: ConfigPaths):
       port: 18789,
       controlUi: { allowInsecureAuth: true },
     },
-    agents: {
-      defaults: { workspace: DEFAULTS.workspace },
-    },
+    agents: {},
     hooks: {
       internal: {
         enabled: true,
@@ -52,12 +54,12 @@ export async function configureCommand(config: InfraConfig, paths: ConfigPaths):
   };
 
   for (const [name, inst] of Object.entries(config.instances)) {
-    const configDir = join(paths.instancesDir, name, "config");
-    const configFile = join(configDir, "openclaw.json");
+    const instanceDir = join(paths.instancesDir, name);
+    const configFile = join(instanceDir, "openclaw.json");
 
     // Ensure directory exists
-    if (!existsSync(configDir)) {
-      mkdirSync(configDir, { recursive: true });
+    if (!existsSync(instanceDir)) {
+      mkdirSync(instanceDir, { recursive: true });
     }
 
     // Preserve existing token if present

@@ -20,6 +20,7 @@ import { configureCommand } from "./commands/configure.js";
 import { openCommand } from "./commands/open.js";
 import { buildCommand } from "./commands/build.js";
 import { shellCommand } from "./commands/shell.js";
+import { pairCommand } from "./commands/pair.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, "../package.json"), "utf-8"));
@@ -192,7 +193,7 @@ program
   .command("build")
   .description("Build or rebuild the Docker image")
   .option("--openclaw-path <path>", "Path to openclaw repo")
-  .action((options) => {
+  .action(async (options) => {
     requireDocker();
     const opts = program.opts();
     const paths = resolveConfigPaths(opts.config);
@@ -203,7 +204,7 @@ program
     }
 
     const config = loadConfig(paths);
-    buildCommand(config, paths, { openclawPath: options.openclawPath });
+    await buildCommand(config, paths, { openclawPath: options.openclawPath });
   });
 
 // tail command (shortcut for logs -f --tail 100)
@@ -238,6 +239,25 @@ program
 
     const config = loadConfig(paths);
     shellCommand(config, paths, instance);
+  });
+
+// pair command
+program
+  .command("pair [instance] [code]")
+  .description("List or approve pairing codes")
+  .option("--channel <channel>", "Channel to pair (telegram, whatsapp, etc.)", "telegram")
+  .action((instance, code, options) => {
+    requireDocker();
+    const opts = program.opts();
+    const paths = resolveConfigPaths(opts.config);
+
+    if (!existsSync(paths.configFile)) {
+      console.error(`Error: Config file not found: ${paths.configFile}`);
+      process.exit(1);
+    }
+
+    const config = loadConfig(paths);
+    pairCommand(config, paths, { instance, code, channel: options.channel });
   });
 
 program.parse();

@@ -24,7 +24,7 @@ export function openCommand(
   }
 
   const inst = config.instances[name];
-  const configFile = join(paths.instancesDir, name, "config", "openclaw.json");
+  const configFile = join(paths.instancesDir, name, "openclaw.json");
 
   if (!existsSync(configFile)) {
     console.error(chalk.red(`Config not found: ${configFile}`));

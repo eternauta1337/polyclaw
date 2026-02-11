@@ -89,8 +89,7 @@ services:
     environment:
       HOME: /home/node
     volumes:
-      - ./instances/${name}/config:/home/node/.openclaw
-      - ./instances/${name}/workspace:/home/node/.openclaw/workspace${skillsVolume}${extraVolumes}
+      - ./instances/${name}:/home/node/.openclaw${skillsVolume}${extraVolumes}
       - ${entrypointVolume}
     ports:
       - "${inst.port}:18789"

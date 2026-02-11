@@ -23,11 +23,12 @@ import {
 } from "node:fs";
 import { resolve } from "node:path";
 
-const WORKSPACE_DIR = "/home/node/.openclaw/workspace";
-const SKILLS_DIR = `${WORKSPACE_DIR}/skills`;
+const CONFIG_DIR = "/home/node/.openclaw";
+const WORKSPACE_DIR = `${CONFIG_DIR}/workspace`;
+// Use managed skills dir (shared across all agents) instead of workspace-specific
+const SKILLS_DIR = `${CONFIG_DIR}/skills`;
 const BUNDLED_SKILLS = "/app/skills";
 const CUSTOM_SKILLS = "/skills-custom";
-const CONFIG_DIR = "/home/node/.openclaw";
 const SERVICES_FILE = `${CONFIG_DIR}/services.json`;
 
 interface ServiceConfig {
@@ -124,7 +125,11 @@ function linkSkillBinaries(): void {
           // Remove existing link if present
           if (existsSync(link)) rmSync(link);
           symlinkSync(target, link);
-          chmodSync(target, 0o755);
+          try {
+            chmodSync(target, 0o755);
+          } catch {
+            // Read-only mount — file should already have correct permissions from host
+          }
           linked++;
         } catch (err: any) {
           console.warn(`[entrypoint] Failed to link ${name}: ${err.message}`);

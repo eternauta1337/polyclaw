@@ -2,7 +2,7 @@
  * Template file management
  */
 
-import { existsSync, mkdirSync, writeFileSync, copyFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, writeFileSync, copyFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import chalk from "chalk";
@@ -107,7 +107,6 @@ export function createInitialConfig(
         model: {
           primary: model,
         },
-        workspace: "/home/node/.openclaw/workspace",
       },
     },
     hooks: {
@@ -129,6 +128,37 @@ export function createInitialConfig(
   writeFileSync(configFile, JSON.stringify(initialConfig, null, 2));
 }
 
+/** Read the agents list from global config. */
+function getAgentsList(
+  config: InfraConfig,
+): Array<{ id: string; default?: boolean }> {
+  return (
+    (getPath(config.config || {}, "agents.list") as
+      | Array<{ id: string; default?: boolean }>
+      | undefined) ?? []
+  );
+}
+
+/**
+ * Return workspace directories for an instance.
+ * All workspaces live at instances/{name}/workspace-{agentId}/.
+ * Creates dirs if they don't exist.
+ */
+function getInstanceWorkspaceDirs(
+  instanceDir: string,
+  agents: Array<{ id: string }>,
+): string[] {
+  const dirs: string[] = [];
+  for (const agent of agents) {
+    const dir = join(instanceDir, `workspace-${agent.id}`);
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
+    }
+    dirs.push(dir);
+  }
+  return dirs;
+}
+
 /**
  * Sync instance folders - create directories for each instance
  */
@@ -140,27 +170,73 @@ export function syncInstanceFolders(
 
   const defaultModel =
     (getPath(config.config || {}, "agents.defaults.model.primary") as string) || DEFAULTS.model;
+  const agents = getAgentsList(config);
 
   for (const [name, inst] of Object.entries(config.instances)) {
     const dir = join(paths.instancesDir, name);
-    const configDir = join(dir, "config");
 
     if (!existsSync(dir)) {
       console.log(`  ${chalk.yellow("Creating")} ${name}...`);
-      mkdirSync(configDir, { recursive: true });
-      mkdirSync(join(dir, "workspace"), { recursive: true });
-      createInitialConfig(configDir, inst, defaultModel, config.config);
+      mkdirSync(dir, { recursive: true });
+      createInitialConfig(dir, inst, defaultModel, config.config);
       console.log(chalk.dim(`         Initial config created`));
     } else {
       console.log(`  ${chalk.green("OK")} ${name} already exists`);
     }
 
+    // Ensure workspace dirs exist for each agent
+    getInstanceWorkspaceDirs(dir, agents);
+
     // Write services.json if services are configured
     if (config.services && config.services.length > 0) {
-      const servicesFile = join(configDir, "services.json");
+      const servicesFile = join(dir, "services.json");
       writeFileSync(servicesFile, JSON.stringify(config.services, null, 2));
     }
   }
 
   console.log(chalk.green("Sync completed."));
+}
+
+/**
+ * Sync project-level workspace files to all instance workspaces.
+ * Copies every file from the project workspace dir to each agent's workspace,
+ * overwriting existing files. Instance-only files are never touched.
+ */
+export function syncWorkspaceFiles(
+  config: InfraConfig,
+  paths: ConfigPaths,
+): void {
+  const workspacePath = config.workspace?.path || "./workspace";
+  const projectWorkspaceDir = join(paths.baseDir, workspacePath);
+
+  if (!existsSync(projectWorkspaceDir)) {
+    return;
+  }
+
+  const files = readdirSync(projectWorkspaceDir).filter(
+    (f) => !f.startsWith("."),
+  );
+  if (files.length === 0) {
+    return;
+  }
+
+  console.log(chalk.green("=== Syncing workspace files ==="));
+  console.log(chalk.dim(`  Source: ${workspacePath}/ (${files.join(", ")})`));
+
+  const agents = getAgentsList(config);
+
+  for (const name of Object.keys(config.instances)) {
+    const instanceDir = join(paths.instancesDir, name);
+    const workspaceDirs = getInstanceWorkspaceDirs(instanceDir, agents);
+
+    for (const dir of workspaceDirs) {
+      for (const file of files) {
+        copyFileSync(join(projectWorkspaceDir, file), join(dir, file));
+      }
+    }
+
+    console.log(
+      `  ${chalk.green("OK")} ${name} (${workspaceDirs.length} workspace${workspaceDirs.length !== 1 ? "s" : ""})`,
+    );
+  }
 }

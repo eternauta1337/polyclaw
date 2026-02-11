@@ -9,13 +9,13 @@ import type { ConfigPaths, InfraConfig } from "../lib/config.js";
 import { DEFAULTS } from "../lib/config.js";
 import { findOpenclawRepo, buildImage, buildExtendedImage, buildPolyclawBase, imageExists } from "../lib/docker.js";
 
-export function buildCommand(
+export async function buildCommand(
   config: InfraConfig,
   paths: ConfigPaths,
   options: { openclawPath?: string } = {}
-): void {
+): Promise<void> {
   const imageName = config.docker?.image || DEFAULTS.image;
-  const repoPath = findOpenclawRepo(options.openclawPath);
+  const repoPath = await findOpenclawRepo(options.openclawPath);
 
   // Check if there's a Dockerfile.extended
   const hasExtended = existsSync(join(paths.baseDir, "Dockerfile.extended"));

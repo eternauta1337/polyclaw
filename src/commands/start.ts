@@ -7,7 +7,7 @@ import type { ConfigPaths, InfraConfig } from "../lib/config.js";
 import { DEFAULTS } from "../lib/config.js";
 import { generateComposeFile } from "../lib/compose.js";
 import { dockerCompose, ensureImage } from "../lib/docker.js";
-import { syncInstanceFolders } from "../lib/templates.js";
+import { syncInstanceFolders, syncWorkspaceFiles } from "../lib/templates.js";
 import { configureCommand } from "./configure.js";
 
 export async function startCommand(
@@ -17,10 +17,12 @@ export async function startCommand(
 ): Promise<void> {
   // Ensure Docker image exists
   const imageName = config.docker?.image || DEFAULTS.image;
-  ensureImage(imageName, { openclawPath: options.openclawPath, baseDir: paths.baseDir });
+  await ensureImage(imageName, { openclawPath: options.openclawPath, baseDir: paths.baseDir });
 
-  // Sync instance folders and configure
+  // Sync instance folders, workspace files, and configure
   syncInstanceFolders(config, paths);
+  console.log();
+  syncWorkspaceFiles(config, paths);
   console.log();
   const ok = await configureCommand(config, paths);
   if (!ok) {

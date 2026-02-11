@@ -41,6 +41,10 @@ export interface InfraConfig {
     // Global volumes applied to all instances
     volumes?: VolumeMount[];
   };
+  // Project-level workspace files synced to all instances
+  workspace?: {
+    path?: string; // Default: "./workspace"
+  };
   // Background services to run in containers (managed by pm2)
   services?: ServiceConfig[];
   // OpenClaw config - passed through directly to all instances
@@ -50,7 +54,6 @@ export interface InfraConfig {
 // Default values for incomplete configs
 export const DEFAULTS = {
   model: "anthropic/claude-sonnet-4-5",
-  workspace: "/home/node/.openclaw/workspace",
   image: "openclaw:local",
   configFile: "polyclaw.json5",
 };

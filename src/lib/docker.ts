@@ -3,6 +3,7 @@
  */
 
 import { execSync, spawn } from "node:child_process";
+import { createInterface } from "node:readline";
 import { join } from "node:path";
 import { existsSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -183,10 +184,21 @@ const OPENCLAW_REPO = "https://github.com/openclaw/openclaw.git";
 const POLYCLAW_HOME = join(homedir(), ".polyclaw");
 const OPENCLAW_CLONE_PATH = join(POLYCLAW_HOME, "openclaw");
 
+function promptYesNo(question: string): Promise<boolean> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer.trim().toLowerCase() !== "n");
+    });
+  });
+}
+
 /**
- * Find or clone the openclaw repository
+ * Find the openclaw repository.
+ * If not found, prompts the user to clone it (unless --openclaw-path is given).
  */
-export function findOpenclawRepo(customPath?: string): string {
+export async function findOpenclawRepo(customPath?: string): Promise<string> {
   // 1. Check custom path if provided
   if (customPath) {
     const resolved = customPath.startsWith("/") ? customPath : join(process.cwd(), customPath);
@@ -202,11 +214,16 @@ export function findOpenclawRepo(customPath?: string): string {
     return OPENCLAW_CLONE_PATH;
   }
 
-  // 3. Clone the repo to ~/.polyclaw/openclaw
-  console.log(chalk.yellow(`  OpenClaw repo not found, cloning...`));
-  console.log(chalk.dim(`  To: ${OPENCLAW_CLONE_PATH}`));
+  // 3. Ask whether to clone
+  console.log(chalk.yellow(`  OpenClaw repo not found.`));
+  const yes = await promptYesNo(
+    `  Clone from GitHub to ${OPENCLAW_CLONE_PATH}? [Y/n] `,
+  );
+  if (!yes) {
+    console.error(chalk.dim(`  Provide the path with: --openclaw-path <path>`));
+    process.exit(1);
+  }
 
-  // Ensure ~/.polyclaw exists
   if (!existsSync(POLYCLAW_HOME)) {
     mkdirSync(POLYCLAW_HOME, { recursive: true });
   }
@@ -292,8 +309,8 @@ export function buildExtendedImage(imageName: string, baseDir: string): void {
 /**
  * Ensure the base images exist (openclaw:local -> polyclaw:base)
  */
-export function ensureBaseImages(openclawPath?: string): void {
-  const repoPath = findOpenclawRepo(openclawPath);
+export async function ensureBaseImages(openclawPath?: string): Promise<void> {
+  const repoPath = await findOpenclawRepo(openclawPath);
 
   // Build openclaw:local if needed
   if (!imageExists("openclaw:local")) {
@@ -312,10 +329,10 @@ export function ensureBaseImages(openclawPath?: string): void {
 /**
  * Ensure the Docker image exists, building it if necessary
  */
-export function ensureImage(
+export async function ensureImage(
   imageName: string,
   options: { openclawPath?: string; baseDir?: string } = {}
-): void {
+): Promise<void> {
   if (imageExists(imageName)) {
     return;
   }
@@ -328,14 +345,14 @@ export function ensureImage(
 
   if (isExtendedImage) {
     // Ensure base images exist first
-    ensureBaseImages(openclawPath);
+    await ensureBaseImages(openclawPath);
     // Then build extended image
     console.log(chalk.yellow(`  Image ${imageName} not found, building...`));
     buildExtendedImage(imageName, baseDir!);
   } else if (imageName === "polyclaw:base") {
-    ensureBaseImages(openclawPath);
+    await ensureBaseImages(openclawPath);
   } else {
-    const repoPath = findOpenclawRepo(openclawPath);
+    const repoPath = await findOpenclawRepo(openclawPath);
     console.log(chalk.yellow(`  Image ${imageName} not found, building...`));
     buildImage(imageName, repoPath);
   }

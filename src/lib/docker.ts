@@ -180,7 +180,7 @@ export function imageExists(imageName: string): boolean {
   }
 }
 
-const OPENCLAW_REPO = "https://github.com/openclaw/openclaw.git";
+const OPENCLAW_REPO = "git@github.com:eternauta1337/openclaw.git";
 const POLYCLAW_HOME = join(homedir(), ".polyclaw");
 const OPENCLAW_CLONE_PATH = join(POLYCLAW_HOME, "openclaw");
 

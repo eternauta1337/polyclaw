@@ -92,7 +92,7 @@ services:
       - ./instances/${name}:/home/node/.openclaw${skillsVolume}${extraVolumes}
       - ${entrypointVolume}
     ports:
-      - "${inst.port}:18789"
+      - "127.0.0.1:${inst.port}:18789"
     entrypoint: ["node", "--experimental-strip-types", "/app/entrypoint.ts"]
     command: ["--bind", "lan"]
     restart: unless-stopped

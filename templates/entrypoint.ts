@@ -8,7 +8,7 @@
  * 2. Starts the gateway with passed arguments
  */
 
-import { execSync, spawn, spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
@@ -212,8 +212,8 @@ exec ${svc.command}
   writeFileSync(ecosystemPath, JSON.stringify(ecosystem, null, 2));
 
   // Use pm2-runtime as the main process (stays in foreground)
-  // This blocks until pm2-runtime exits
-  execSync(`pm2-runtime start ${ecosystemPath}`, {
+  // spawnSync runs pm2-runtime directly without an intermediate /bin/sh
+  spawnSync("pm2-runtime", ["start", ecosystemPath], {
     stdio: "inherit",
     cwd: "/app",
   });

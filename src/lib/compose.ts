@@ -93,7 +93,7 @@ services:
       - ${entrypointVolume}
     ports:
       - "127.0.0.1:${inst.port}:18789"
-    entrypoint: ["node", "--experimental-strip-types", "/app/entrypoint.ts"]
+    entrypoint: ["/bin/sh", "-c", "node --experimental-strip-types /app/entrypoint.ts \\"$@\\" && exec /tmp/start-services.sh", "--"]
     command: ["--bind", "lan"]
     restart: unless-stopped
 

@@ -8,7 +8,7 @@
  * 2. Starts the gateway with passed arguments
  */
 
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
@@ -30,6 +30,7 @@ const SKILLS_DIR = `${CONFIG_DIR}/skills`;
 const BUNDLED_SKILLS = "/app/skills";
 const CUSTOM_SKILLS = "/skills-custom";
 const SERVICES_FILE = `${CONFIG_DIR}/services.json`;
+const START_SCRIPT = "/tmp/start-services.sh";
 
 interface ServiceConfig {
   name: string;
@@ -211,33 +212,27 @@ exec ${svc.command}
   const ecosystemPath = "/tmp/ecosystem.config.json";
   writeFileSync(ecosystemPath, JSON.stringify(ecosystem, null, 2));
 
-  // Use pm2-runtime as the main process (stays in foreground)
-  // spawnSync runs pm2-runtime directly without an intermediate /bin/sh
-  spawnSync("pm2-runtime", ["start", ecosystemPath], {
-    stdio: "inherit",
-    cwd: "/app",
-  });
+  // Write start script — the shell wrapper in docker-compose entrypoint
+  // will exec into this, replacing itself so pm2-runtime becomes PID 1
+  writeFileSync(
+    START_SCRIPT,
+    `#!/bin/sh\ncd /app\nexec pm2-runtime start ${ecosystemPath}\n`,
+    { mode: 0o755 },
+  );
 }
 
 /**
  * Fallback: run gateway directly without pm2
  */
 function startGatewayDirect(args: string[]): void {
-  console.log(`[entrypoint] Starting gateway...`);
+  console.log(`[entrypoint] Starting gateway directly (no pm2)...`);
 
-  const gateway = spawn("node", ["dist/index.js", "gateway", ...args], {
-    stdio: "inherit",
-    cwd: "/app",
-  });
-
-  gateway.on("error", (err) => {
-    console.error("[entrypoint] Error starting gateway:", err.message);
-    process.exit(1);
-  });
-
-  gateway.on("exit", (code) => {
-    process.exit(code ?? 0);
-  });
+  // Write start script — exec replaces the shell with node directly
+  writeFileSync(
+    START_SCRIPT,
+    `#!/bin/sh\ncd /app\nexec node dist/index.js gateway ${args.join(" ")}\n`,
+    { mode: 0o755 },
+  );
 }
 
 function main(): void {

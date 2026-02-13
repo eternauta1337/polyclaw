@@ -4,11 +4,11 @@
 
 import { execSync, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import { join } from "node:path";
-import { existsSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { existsSync, lstatSync, mkdirSync, readlinkSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import chalk from "chalk";
-import type { ConfigPaths } from "./config.js";
+import type { ConfigPaths, InfraConfig } from "./config.js";
 
 export interface DockerStatus {
   installed: boolean;
@@ -180,26 +180,71 @@ export function imageExists(imageName: string): boolean {
   }
 }
 
-const OPENCLAW_REPO = "git@github.com:eternauta1337/openclaw.git";
+const DEFAULT_OPENCLAW_REPO = "git@github.com:eternauta1337/openclaw.git";
 const POLYCLAW_HOME = join(homedir(), ".polyclaw");
 const OPENCLAW_CLONE_PATH = join(POLYCLAW_HOME, "openclaw");
 
 function promptYesNo(question: string): Promise<boolean> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
-  return new Promise((resolve) => {
+  return new Promise((res) => {
     rl.question(question, (answer) => {
       rl.close();
-      resolve(answer.trim().toLowerCase() !== "n");
+      res(answer.trim().toLowerCase() !== "n");
     });
   });
 }
 
 /**
- * Find the openclaw repository.
- * If not found, prompts the user to clone it (unless --openclaw-path is given).
+ * Ensure a symlink at ~/.polyclaw/openclaw points to the given target path.
+ * Creates or updates the symlink as needed.
  */
-export async function findOpenclawRepo(customPath?: string): Promise<string> {
-  // 1. Check custom path if provided
+function ensureSymlink(targetPath: string): void {
+  const resolvedTarget = resolve(targetPath);
+
+  if (!existsSync(POLYCLAW_HOME)) {
+    mkdirSync(POLYCLAW_HOME, { recursive: true });
+  }
+
+  // Check if symlink already points to the right place
+  if (existsSync(OPENCLAW_CLONE_PATH)) {
+    try {
+      const stat = lstatSync(OPENCLAW_CLONE_PATH);
+      if (stat.isSymbolicLink()) {
+        const current = readlinkSync(OPENCLAW_CLONE_PATH);
+        if (resolve(current) === resolvedTarget) {
+          return; // Already correct
+        }
+        // Wrong target, remove and recreate
+        unlinkSync(OPENCLAW_CLONE_PATH);
+      } else {
+        // It's a real directory (e.g. a previous clone), skip
+        console.log(chalk.yellow(`  Warning: ${OPENCLAW_CLONE_PATH} exists and is not a symlink.`));
+        console.log(chalk.yellow(`  Remove it manually to use openclaw_path from config.`));
+        return;
+      }
+    } catch {
+      // Can't read, try to proceed
+    }
+  }
+
+  symlinkSync(resolvedTarget, OPENCLAW_CLONE_PATH);
+  console.log(chalk.dim(`  Symlinked ${OPENCLAW_CLONE_PATH} → ${resolvedTarget}`));
+}
+
+/**
+ * Find the openclaw repository.
+ *
+ * Resolution order:
+ * 1. --openclaw-path CLI flag (direct use, no symlink)
+ * 2. docker.openclaw_path from config (creates symlink to ~/.polyclaw/openclaw)
+ * 3. ~/.polyclaw/openclaw (existing clone or symlink)
+ * 4. Prompt to clone from docker.openclaw_repo or default GitHub URL
+ */
+export async function findOpenclawRepo(
+  customPath?: string,
+  dockerConfig?: InfraConfig["docker"],
+): Promise<string> {
+  // 1. CLI flag override (direct use, no symlink)
   if (customPath) {
     const resolved = customPath.startsWith("/") ? customPath : join(process.cwd(), customPath);
     if (existsSync(join(resolved, "Dockerfile"))) {
@@ -209,18 +254,31 @@ export async function findOpenclawRepo(customPath?: string): Promise<string> {
     process.exit(1);
   }
 
-  // 2. Check ~/.polyclaw/openclaw
+  // 2. Config-based path → create/update symlink
+  if (dockerConfig?.openclaw_path) {
+    const configPath = resolve(dockerConfig.openclaw_path);
+    if (!existsSync(join(configPath, "Dockerfile"))) {
+      console.error(chalk.red(`Error: Dockerfile not found at ${configPath} (from docker.openclaw_path)`));
+      process.exit(1);
+    }
+    ensureSymlink(configPath);
+    return OPENCLAW_CLONE_PATH;
+  }
+
+  // 3. Check ~/.polyclaw/openclaw (real dir or existing symlink)
   if (existsSync(join(OPENCLAW_CLONE_PATH, "Dockerfile"))) {
     return OPENCLAW_CLONE_PATH;
   }
 
-  // 3. Ask whether to clone
+  // 4. Ask whether to clone
+  const repoUrl = dockerConfig?.openclaw_repo || DEFAULT_OPENCLAW_REPO;
   console.log(chalk.yellow(`  OpenClaw repo not found.`));
   const yes = await promptYesNo(
-    `  Clone from GitHub to ${OPENCLAW_CLONE_PATH}? [Y/n] `,
+    `  Clone from ${repoUrl} to ${OPENCLAW_CLONE_PATH}? [Y/n] `,
   );
   if (!yes) {
     console.error(chalk.dim(`  Provide the path with: --openclaw-path <path>`));
+    console.error(chalk.dim(`  Or set docker.openclaw_path in polyclaw.json5`));
     process.exit(1);
   }
 
@@ -228,7 +286,7 @@ export async function findOpenclawRepo(customPath?: string): Promise<string> {
     mkdirSync(POLYCLAW_HOME, { recursive: true });
   }
 
-  execSync(`git clone --depth 1 ${OPENCLAW_REPO} "${OPENCLAW_CLONE_PATH}"`, {
+  execSync(`git clone --depth 1 ${repoUrl} "${OPENCLAW_CLONE_PATH}"`, {
     stdio: "inherit",
     encoding: "utf-8",
   });
@@ -309,8 +367,11 @@ export function buildExtendedImage(imageName: string, baseDir: string): void {
 /**
  * Ensure the base images exist (openclaw:local -> polyclaw:base)
  */
-export async function ensureBaseImages(openclawPath?: string): Promise<void> {
-  const repoPath = await findOpenclawRepo(openclawPath);
+export async function ensureBaseImages(
+  openclawPath?: string,
+  dockerConfig?: InfraConfig["docker"],
+): Promise<void> {
+  const repoPath = await findOpenclawRepo(openclawPath, dockerConfig);
 
   // Build openclaw:local if needed
   if (!imageExists("openclaw:local")) {
@@ -331,13 +392,13 @@ export async function ensureBaseImages(openclawPath?: string): Promise<void> {
  */
 export async function ensureImage(
   imageName: string,
-  options: { openclawPath?: string; baseDir?: string } = {}
+  options: { openclawPath?: string; baseDir?: string; dockerConfig?: InfraConfig["docker"] } = {}
 ): Promise<void> {
   if (imageExists(imageName)) {
     return;
   }
 
-  const { openclawPath, baseDir } = options;
+  const { openclawPath, baseDir, dockerConfig } = options;
 
   // Check if this is an extended image (has Dockerfile.extended)
   const hasExtended = baseDir && existsSync(join(baseDir, "Dockerfile.extended"));
@@ -345,14 +406,14 @@ export async function ensureImage(
 
   if (isExtendedImage) {
     // Ensure base images exist first
-    await ensureBaseImages(openclawPath);
+    await ensureBaseImages(openclawPath, dockerConfig);
     // Then build extended image
     console.log(chalk.yellow(`  Image ${imageName} not found, building...`));
     buildExtendedImage(imageName, baseDir!);
   } else if (imageName === "polyclaw:base") {
-    await ensureBaseImages(openclawPath);
+    await ensureBaseImages(openclawPath, dockerConfig);
   } else {
-    const repoPath = await findOpenclawRepo(openclawPath);
+    const repoPath = await findOpenclawRepo(openclawPath, dockerConfig);
     console.log(chalk.yellow(`  Image ${imageName} not found, building...`));
     buildImage(imageName, repoPath);
   }

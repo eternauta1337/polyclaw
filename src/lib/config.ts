@@ -40,6 +40,10 @@ export interface InfraConfig {
     skills_path?: string;
     // Global volumes applied to all instances
     volumes?: VolumeMount[];
+    // Local path to an existing openclaw repo (symlinked to ~/.polyclaw/openclaw)
+    openclaw_path?: string;
+    // Git URL for cloning openclaw (default: github.com/eternauta1337/openclaw)
+    openclaw_repo?: string;
   };
   // Project-level workspace files synced to all instances
   workspace?: {

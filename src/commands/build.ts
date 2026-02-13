@@ -15,7 +15,7 @@ export async function buildCommand(
   options: { openclawPath?: string } = {}
 ): Promise<void> {
   const imageName = config.docker?.image || DEFAULTS.image;
-  const repoPath = await findOpenclawRepo(options.openclawPath);
+  const repoPath = await findOpenclawRepo(options.openclawPath, config.docker);
 
   // Check if there's a Dockerfile.extended
   const hasExtended = existsSync(join(paths.baseDir, "Dockerfile.extended"));

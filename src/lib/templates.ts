@@ -2,7 +2,7 @@
  * Template file management
  */
 
-import { existsSync, mkdirSync, readdirSync, writeFileSync, copyFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync, copyFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import chalk from "chalk";
@@ -187,10 +187,12 @@ export function syncInstanceFolders(
     // Ensure workspace dirs exist for each agent
     getInstanceWorkspaceDirs(dir, agents);
 
-    // Write services.json if services are configured
+    // Write or clean up services.json
+    const servicesFile = join(dir, "services.json");
     if (config.services && config.services.length > 0) {
-      const servicesFile = join(dir, "services.json");
       writeFileSync(servicesFile, JSON.stringify(config.services, null, 2));
+    } else if (existsSync(servicesFile)) {
+      rmSync(servicesFile);
     }
   }
 

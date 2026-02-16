@@ -238,7 +238,25 @@ function startGatewayDirect(args: string[]): void {
 function main(): void {
   const args = process.argv.slice(2);
   setupSkills();
-  startWithPm2(args);
+
+  // Only use pm2 if there are extra services to manage
+  let hasServices = false;
+  if (existsSync(SERVICES_FILE)) {
+    try {
+      const services: ServiceConfig[] = JSON.parse(
+        readFileSync(SERVICES_FILE, "utf-8")
+      );
+      hasServices = services.length > 0;
+    } catch {
+      // Invalid JSON, treat as no services
+    }
+  }
+
+  if (hasServices) {
+    startWithPm2(args);
+  } else {
+    startGatewayDirect(args);
+  }
 }
 
 main();

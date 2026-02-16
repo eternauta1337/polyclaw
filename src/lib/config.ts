@@ -55,6 +55,8 @@ export interface InfraConfig {
     resources?: DockerResources;
     // Network mode: "isolated" (one network per instance) or "shared" (single network)
     network?: "isolated" | "shared";
+    // Path to a shell script to run at container startup (before gateway)
+    startup_script?: string;
   };
   // Project-level workspace files synced to all instances
   workspace?: {

@@ -31,6 +31,7 @@ const BUNDLED_SKILLS = "/app/skills";
 const CUSTOM_SKILLS = "/skills-custom";
 const SERVICES_FILE = `${CONFIG_DIR}/services.json`;
 const START_SCRIPT = "/tmp/start-services.sh";
+const STARTUP_HOOK = "/tmp/polyclaw-startup.sh";
 
 interface ServiceConfig {
   name: string;
@@ -212,11 +213,14 @@ exec ${svc.command}
   const ecosystemPath = "/tmp/ecosystem.config.json";
   writeFileSync(ecosystemPath, JSON.stringify(ecosystem, null, 2));
 
-  // Write start script — the shell wrapper in docker-compose entrypoint
-  // will exec into this, replacing itself so pm2-runtime becomes PID 1
+  // Write start script — run startup hook if present, then exec pm2-runtime
   writeFileSync(
     START_SCRIPT,
-    `#!/bin/sh\ncd /app\nexec pm2-runtime start ${ecosystemPath}\n`,
+    `#!/bin/sh
+cd /app
+[ -f ${STARTUP_HOOK} ] && . ${STARTUP_HOOK}
+exec pm2-runtime start ${ecosystemPath}
+`,
     { mode: 0o755 },
   );
 }
@@ -227,10 +231,14 @@ exec ${svc.command}
 function startGatewayDirect(args: string[]): void {
   console.log(`[entrypoint] Starting gateway directly (no pm2)...`);
 
-  // Write start script — exec replaces the shell with node directly
+  // Write start script — run startup hook if present, then exec gateway
   writeFileSync(
     START_SCRIPT,
-    `#!/bin/sh\ncd /app\nexec node dist/index.js gateway ${args.join(" ")}\n`,
+    `#!/bin/sh
+cd /app
+[ -f ${STARTUP_HOOK} ] && . ${STARTUP_HOOK}
+exec node dist/index.js gateway ${args.join(" ")}
+`,
     { mode: 0o755 },
   );
 }

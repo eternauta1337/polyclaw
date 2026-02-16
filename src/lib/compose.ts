@@ -60,6 +60,12 @@ services:
 
     const entrypointVolume = `./${ENTRYPOINT_LOCAL}:/app/entrypoint.ts:ro`;
 
+    // Startup hook script (optional, mounted read-only)
+    const startupScript = config.docker?.startup_script;
+    const startupVolume = startupScript
+      ? `\n      - ${startupScript}:/tmp/polyclaw-startup.sh:ro`
+      : "";
+
     // Combine global volumes + instance-specific volumes
     const globalVolumes = config.docker?.volumes || [];
     const instanceVolumes = inst.volumes || [];
@@ -113,7 +119,7 @@ services:
       HOME: /home/node${nodeOptionsLine}
     volumes:
       - ./instances/${name}:/home/node/.openclaw${skillsVolume}${extraVolumes}
-      - ${entrypointVolume}
+      - ${entrypointVolume}${startupVolume}
     ports:
       - "127.0.0.1:${inst.port}:18789"
     entrypoint: ["/bin/sh", "-c", "node --experimental-strip-types /app/entrypoint.ts \\"$@\\" && exec /tmp/start-services.sh", "--"]

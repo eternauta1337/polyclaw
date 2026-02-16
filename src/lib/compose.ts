@@ -96,8 +96,16 @@ services:
     entrypoint: ["/bin/sh", "-c", "node --experimental-strip-types /app/entrypoint.ts \\"$@\\" && exec /tmp/start-services.sh", "--"]
     command: ["--bind", "lan"]
     restart: unless-stopped
+    networks:
+      - net-${name}
 
 `;
+  }
+
+  // Isolated network per instance — containers cannot reach each other
+  compose += `networks:\n`;
+  for (const name of Object.keys(config.instances)) {
+    compose += `  net-${name}:\n`;
   }
 
   return compose;

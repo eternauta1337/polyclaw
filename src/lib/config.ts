@@ -31,6 +31,11 @@ export interface InstanceConfig {
 }
 
 // InfraConfig: polyclaw extensions + openclaw config passthrough
+export interface DockerResources {
+  limits?: { memory?: string };
+  reservations?: { memory?: string };
+}
+
 export interface InfraConfig {
   // Polyclaw extensions
   project: string;
@@ -44,6 +49,12 @@ export interface InfraConfig {
     openclaw_path?: string;
     // Git URL for cloning openclaw (default: github.com/eternauta1337/openclaw)
     openclaw_repo?: string;
+    // NODE_OPTIONS env var for all containers (e.g., "--max-old-space-size=512")
+    node_options?: string;
+    // Docker resource limits/reservations per container
+    resources?: DockerResources;
+    // Network mode: "isolated" (one network per instance) or "shared" (single network)
+    network?: "isolated" | "shared";
   };
   // Project-level workspace files synced to all instances
   workspace?: {

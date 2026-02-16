@@ -81,13 +81,36 @@ services:
       ? `\n      - ${instanceEnvFile}`
       : "";
 
+    // NODE_OPTIONS environment variable
+    const nodeOptions = config.docker?.node_options;
+    const nodeOptionsLine = nodeOptions
+      ? `\n      NODE_OPTIONS: "${nodeOptions}"`
+      : "";
+
+    // Docker resource limits
+    const resources = config.docker?.resources;
+    let deployBlock = "";
+    if (resources?.limits?.memory || resources?.reservations?.memory) {
+      deployBlock = "\n    deploy:\n      resources:";
+      if (resources.limits?.memory) {
+        deployBlock += `\n        limits:\n          memory: ${resources.limits.memory}`;
+      }
+      if (resources.reservations?.memory) {
+        deployBlock += `\n        reservations:\n          memory: ${resources.reservations.memory}`;
+      }
+    }
+
+    // Network name depends on mode
+    const networkMode = config.docker?.network || "isolated";
+    const networkName = networkMode === "shared" ? `${project}-net` : `net-${name}`;
+
     compose += `  ${name}:
     image: ${image}
     container_name: ${project}-${name}
     env_file:
       - .env/.env.shared${envFileLines}
     environment:
-      HOME: /home/node
+      HOME: /home/node${nodeOptionsLine}
     volumes:
       - ./instances/${name}:/home/node/.openclaw${skillsVolume}${extraVolumes}
       - ${entrypointVolume}
@@ -95,17 +118,23 @@ services:
       - "127.0.0.1:${inst.port}:18789"
     entrypoint: ["/bin/sh", "-c", "node --experimental-strip-types /app/entrypoint.ts \\"$@\\" && exec /tmp/start-services.sh", "--"]
     command: ["--bind", "lan"]
-    restart: unless-stopped
+    restart: unless-stopped${deployBlock}
     networks:
-      - net-${name}
+      - ${networkName}
 
 `;
   }
 
-  // Isolated network per instance — containers cannot reach each other
+  // Networks
+  const networkMode = config.docker?.network || "isolated";
   compose += `networks:\n`;
-  for (const name of Object.keys(config.instances)) {
-    compose += `  net-${name}:\n`;
+  if (networkMode === "shared") {
+    compose += `  ${project}-net:\n`;
+  } else {
+    // Isolated network per instance — containers cannot reach each other
+    for (const name of Object.keys(config.instances)) {
+      compose += `  net-${name}:\n`;
+    }
   }
 
   return compose;

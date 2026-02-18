@@ -10,6 +10,7 @@ import type { ConfigPaths, InfraConfig } from "../lib/config.js";
 import { DEFAULTS, expandEnvVars, readEnvFile } from "../lib/config.js";
 import { syncWorkspaceFiles } from "../lib/templates.js";
 import { validateOpenClawConfig, printValidationErrors } from "../lib/validate.js";
+import { findUnresolvedVars } from "../lib/validate-polyclaw-config.js";
 
 /** Deep merge objects (b wins) */
 function merge(a: Record<string, unknown>, b: Record<string, unknown>): Record<string, unknown> {
@@ -82,12 +83,23 @@ export async function configureCommand(config: InfraConfig, paths: ConfigPaths):
     const instanceEnv = readEnvFile(join(paths.baseDir, ".env", `.env.${name}`));
     final = expandEnvVars(final, instanceEnv) as Record<string, unknown>;
 
-    // Validate before writing
+    // Check A: unresolved ${VAR} references
+    const unresolvedIssues = findUnresolvedVars(final);
+    if (unresolvedIssues.length > 0) {
+      printValidationErrors(`${name} (unresolved vars)`, unresolvedIssues);
+      hasErrors = true;
+      continue;
+    }
+
+    // Check B: structural validation via OpenClaw's Zod schema
     const validation = await validateOpenClawConfig(final);
     if (!validation.ok) {
       printValidationErrors(name, validation.issues);
       hasErrors = true;
       continue;
+    }
+    if (validation.skipped) {
+      console.log(chalk.yellow(`  ⚠ ${name}: OpenClaw schema not available — skipping structural validation`));
     }
 
     writeFileSync(configFile, JSON.stringify(final, null, 2));

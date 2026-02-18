@@ -54,6 +54,8 @@ export {
   type ValidationResult,
 } from "./lib/validate.js";
 
+export { findUnresolvedVars } from "./lib/validate-polyclaw-config.js";
+
 // Commands
 export { initCommand } from "./commands/init.js";
 export { generateCommand } from "./commands/generate.js";

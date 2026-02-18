@@ -44,6 +44,8 @@ export interface ValidationIssue {
 
 export interface ValidationResult {
   ok: boolean;
+  /** true when the schema was not available and validation was skipped */
+  skipped?: boolean;
   issues: ValidationIssue[];
 }
 
@@ -57,7 +59,7 @@ export async function validateOpenClawConfig(
 
   if (!schema) {
     // Schema not available - skip validation (don't try to build, that's slow)
-    return { ok: true, issues: [] };
+    return { ok: true, skipped: true, issues: [] };
   }
 
   const result = schema.safeParse(config);

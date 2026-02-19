@@ -2,14 +2,35 @@
  * Config validation using OpenClaw's Zod schema
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import chalk from "chalk";
 import type { ZodType } from "zod";
 
-// Path to schema (if openclaw is built locally)
-const SCHEMA_PATH = join(homedir(), ".polyclaw", "openclaw", "dist", "config", "zod-schema.js");
+const POLYCLAW_HOME = join(homedir(), ".polyclaw");
+const GLOBAL_CONFIG_PATH = join(POLYCLAW_HOME, "config.json");
+
+/**
+ * Find the openclaw schema path, checking multiple locations:
+ * 1. ~/.polyclaw/openclaw/dist/config/zod-schema.js (symlink or real dir)
+ * 2. Configured openclawPath in ~/.polyclaw/config.json
+ */
+function getSchemaPath(): string {
+  const symlinkSchema = join(POLYCLAW_HOME, "openclaw", "dist", "config", "zod-schema.js");
+  if (existsSync(symlinkSchema)) return symlinkSchema;
+
+  try {
+    const config = JSON.parse(readFileSync(GLOBAL_CONFIG_PATH, "utf-8"));
+    if (config.openclawPath) {
+      return join(config.openclawPath, "dist", "config", "zod-schema.js");
+    }
+  } catch {
+    // ignore
+  }
+
+  return symlinkSchema; // default (even if doesn't exist — caller checks existsSync)
+}
 
 // Cache for loaded schema
 let OpenClawSchema: ZodType | null = null;
@@ -18,18 +39,19 @@ let OpenClawSchema: ZodType | null = null;
  * Check if openclaw schema is available (without trying to build it)
  */
 export function isSchemaAvailable(): boolean {
-  return existsSync(SCHEMA_PATH);
+  return existsSync(getSchemaPath());
 }
 
 async function loadSchema(): Promise<ZodType | null> {
   if (OpenClawSchema) return OpenClawSchema;
 
-  if (!existsSync(SCHEMA_PATH)) {
+  const schemaPath = getSchemaPath();
+  if (!existsSync(schemaPath)) {
     return null;
   }
 
   try {
-    const mod = await import(SCHEMA_PATH);
+    const mod = await import(schemaPath);
     OpenClawSchema = mod.OpenClawSchema;
     return OpenClawSchema;
   } catch {

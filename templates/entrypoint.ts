@@ -36,6 +36,9 @@ interface ServiceConfig {
   name: string;
   command: string;
   condition?: string;
+  // Default: "node". Use "root" to skip privilege drop (e.g. for services that
+  // need to write to macOS bind-mounted files, which appear as root via VirtioFS).
+  user?: string;
 }
 
 function setupSkills(): void {
@@ -149,12 +152,14 @@ function linkSkillBinaries(): void {
 
 /**
  * Write an s6 service dir to /run/service/{name}/
- * The run script uses /command/s6-setuidgid to drop privileges to the node user.
+ * By default drops privileges to the node user via s6-setuidgid.
+ * Pass user: "root" to skip privilege drop (needed for services that write to
+ * macOS bind-mounted files, which appear as root inside containers via VirtioFS).
  */
 function writeS6Service(
   name: string,
   command: string,
-  opts: { cwd?: string; condition?: string; restartDelay?: number } = {}
+  opts: { cwd?: string; condition?: string; restartDelay?: number; user?: string } = {}
 ): void {
   const dir = `${S6_SERVICES_DIR}/${name}`;
   mkdirSync(dir, { recursive: true });
@@ -168,8 +173,12 @@ function writeS6Service(
 
   const cdLine = opts.cwd ? `cd ${opts.cwd}\n` : "";
 
-  // run script: executed by s6-svscan, drops to node user via s6-setuidgid
-  const runScript = `#!/bin/sh\n${conditionCheck}${cdLine}exec /command/s6-setuidgid node ${command}\n`;
+  // run script: drop to specified user, or stay as root if user === "root"
+  const user = opts.user || "node";
+  const execLine = user === "root"
+    ? `exec ${command}`
+    : `exec /command/s6-setuidgid ${user} ${command}`;
+  const runScript = `#!/bin/sh\n${conditionCheck}${cdLine}${execLine}\n`;
   writeFileSync(`${dir}/run`, runScript, { mode: 0o755 });
 
   // finish script: delay before s6 restarts the service (prevents rapid respawn)
@@ -202,6 +211,7 @@ function generateS6Services(): void {
         writeS6Service(svc.name, svc.command, {
           condition: svc.condition,
           restartDelay: 5,
+          user: svc.user,
         });
         console.log(`[entrypoint] s6 service registered: ${svc.name}`);
       }

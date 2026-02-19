@@ -19,6 +19,10 @@ export interface ServiceConfig {
   command: string;
   // Condition to check before starting (e.g., "file:/path/to/file")
   condition?: string;
+  // User to run the service as. Default: "node". Use "root" to skip privilege drop
+  // (needed for services that write to macOS bind-mounted files, which appear as root
+  // inside Linux containers due to Docker Desktop VirtioFS UID mapping).
+  user?: string;
 }
 
 export interface InstanceConfig {

@@ -47,9 +47,8 @@ export {
 
 // Validation utilities
 export {
-  validateOpenClawConfig,
+  validateOpenClawConfigs,
   printValidationErrors,
-  isSchemaAvailable,
   type ValidationIssue,
   type ValidationResult,
 } from "./lib/validate.js";

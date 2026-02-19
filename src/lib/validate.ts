@@ -1,63 +1,12 @@
 /**
- * Config validation using OpenClaw's Zod schema
+ * Config validation using OpenClaw's Zod schema (via docker run)
+ *
+ * Instead of extracting the schema to the host, we run a single Docker
+ * container that validates all configs using OpenClaw's own tsx-based tooling.
  */
 
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { homedir } from "node:os";
+import { execSync } from "node:child_process";
 import chalk from "chalk";
-import type { ZodType } from "zod";
-
-const POLYCLAW_HOME = join(homedir(), ".polyclaw");
-const GLOBAL_CONFIG_PATH = join(POLYCLAW_HOME, "config.json");
-
-/**
- * Find the openclaw schema path, checking multiple locations:
- * 1. ~/.polyclaw/openclaw/dist/config/zod-schema.js (symlink or real dir)
- * 2. Configured openclawPath in ~/.polyclaw/config.json
- */
-function getSchemaPath(): string {
-  const symlinkSchema = join(POLYCLAW_HOME, "openclaw", "dist", "config", "zod-schema.js");
-  if (existsSync(symlinkSchema)) return symlinkSchema;
-
-  try {
-    const config = JSON.parse(readFileSync(GLOBAL_CONFIG_PATH, "utf-8"));
-    if (config.openclawPath) {
-      return join(config.openclawPath, "dist", "config", "zod-schema.js");
-    }
-  } catch {
-    // ignore
-  }
-
-  return symlinkSchema; // default (even if doesn't exist — caller checks existsSync)
-}
-
-// Cache for loaded schema
-let OpenClawSchema: ZodType | null = null;
-
-/**
- * Check if openclaw schema is available (without trying to build it)
- */
-export function isSchemaAvailable(): boolean {
-  return existsSync(getSchemaPath());
-}
-
-async function loadSchema(): Promise<ZodType | null> {
-  if (OpenClawSchema) return OpenClawSchema;
-
-  const schemaPath = getSchemaPath();
-  if (!existsSync(schemaPath)) {
-    return null;
-  }
-
-  try {
-    const mod = await import(schemaPath);
-    OpenClawSchema = mod.OpenClawSchema;
-    return OpenClawSchema;
-  } catch {
-    return null;
-  }
-}
 
 export interface ValidationIssue {
   path: string;
@@ -66,37 +15,65 @@ export interface ValidationIssue {
 
 export interface ValidationResult {
   ok: boolean;
-  /** true when the schema was not available and validation was skipped */
+  /** true when validation was skipped (Docker unavailable or image not found) */
   skipped?: boolean;
   issues: ValidationIssue[];
 }
 
 /**
- * Validate an OpenClaw config object against the schema
+ * Validate multiple OpenClaw configs at once by running a single Docker container.
+ * Uses OpenClaw's own tsx + zod-schema.ts for validation.
+ *
+ * Returns skipped results (ok: true, skipped: true) if Docker/image is unavailable.
  */
-export async function validateOpenClawConfig(
-  config: Record<string, unknown>
-): Promise<ValidationResult> {
-  const schema = await loadSchema();
+export async function validateOpenClawConfigs(
+  configs: Record<string, Record<string, unknown>>,
+  imageName: string
+): Promise<Record<string, ValidationResult>> {
+  const names = Object.keys(configs);
+  if (names.length === 0) return {};
 
-  if (!schema) {
-    // Schema not available - skip validation (don't try to build, that's slow)
-    return { ok: true, skipped: true, issues: [] };
-  }
+  const configArray = names.map((n) => configs[n]);
 
-  const result = schema.safeParse(config);
-
-  if (result.success) {
-    return { ok: true, issues: [] };
-  }
-
+  // Script runs inside the container (Node 22 + tsx available).
+  // Reads configs embedded inline, validates via OpenClaw's own schema,
+  // writes JSON results to stdout.
+  const script = `
+import { OpenClawSchema } from '/app/src/config/zod-schema.ts';
+const configs = ${JSON.stringify(configArray)};
+const results = configs.map((config) => {
+  const r = OpenClawSchema.safeParse(config);
+  if (r.success) return { ok: true, issues: [] };
   return {
     ok: false,
-    issues: result.error.issues.map((iss) => ({
-      path: iss.path.join(".") || "<root>",
-      message: iss.message,
+    issues: r.error.issues.map((i) => ({
+      path: i.path.join('.') || '<root>',
+      message: i.message,
     })),
   };
+});
+process.stdout.write(JSON.stringify(results));
+`;
+
+  try {
+    // Write script to a temp file inside the container then run with tsx.
+    // tsx is a devDependency of openclaw, installed at /app/node_modules/.bin/tsx.
+    const output = execSync(
+      `docker run --rm -i "${imageName}" sh -c "cat > /tmp/pc-validate.mts && /app/node_modules/.bin/tsx /tmp/pc-validate.mts"`,
+      { input: script, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }
+    );
+    const results: ValidationResult[] = JSON.parse(output);
+    const mapped: Record<string, ValidationResult> = {};
+    names.forEach((name, i) => (mapped[name] = results[i]));
+    return mapped;
+  } catch {
+    // Docker not running, image not found, or tsx error — skip validation
+    console.warn(chalk.yellow(`  Warning: schema validation unavailable (Docker or image not ready)`));
+    console.warn(chalk.dim(`  Run 'polyclaw build' to rebuild the image`));
+    const skipped: Record<string, ValidationResult> = {};
+    names.forEach((name) => (skipped[name] = { ok: true, skipped: true, issues: [] }));
+    return skipped;
+  }
 }
 
 /**

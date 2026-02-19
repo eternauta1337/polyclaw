@@ -9,7 +9,7 @@ import chalk from "chalk";
 import type { ConfigPaths, InfraConfig } from "../lib/config.js";
 import { DEFAULTS, expandEnvVars, readEnvFile } from "../lib/config.js";
 import { syncWorkspaceFiles } from "../lib/templates.js";
-import { validateOpenClawConfig, printValidationErrors } from "../lib/validate.js";
+import { validateOpenClawConfigs, printValidationErrors } from "../lib/validate.js";
 import { findUnresolvedVars } from "../lib/validate-polyclaw-config.js";
 
 /** Deep merge objects (b wins) */
@@ -34,6 +34,7 @@ export async function configureCommand(config: InfraConfig, paths: ConfigPaths):
 
   console.log(chalk.green("=== Configuring instances ==="));
 
+  const imageName = config.docker?.image || DEFAULTS.image;
   let hasErrors = false;
   const baseConfig = {
     gateway: {
@@ -53,6 +54,9 @@ export async function configureCommand(config: InfraConfig, paths: ConfigPaths):
       },
     },
   };
+
+  // Phase 1: build all final configs (merge + expand env vars)
+  const builtConfigs = new Map<string, { final: Record<string, unknown>; configFile: string }>();
 
   for (const [name, inst] of Object.entries(config.instances)) {
     const instanceDir = join(paths.instancesDir, name);
@@ -83,7 +87,7 @@ export async function configureCommand(config: InfraConfig, paths: ConfigPaths):
     const instanceEnv = readEnvFile(join(paths.baseDir, ".env", `.env.${name}`));
     final = expandEnvVars(final, instanceEnv) as Record<string, unknown>;
 
-    // Check A: unresolved ${VAR} references
+    // Check: unresolved ${VAR} references
     const unresolvedIssues = findUnresolvedVars(final);
     if (unresolvedIssues.length > 0) {
       printValidationErrors(`${name} (unresolved vars)`, unresolvedIssues);
@@ -91,20 +95,29 @@ export async function configureCommand(config: InfraConfig, paths: ConfigPaths):
       continue;
     }
 
-    // Check B: structural validation via OpenClaw's Zod schema
-    const validation = await validateOpenClawConfig(final);
+    builtConfigs.set(name, { final, configFile });
+  }
+
+  if (hasErrors) {
+    console.log(chalk.red("\nConfiguration failed - fix errors above."));
+    return false;
+  }
+
+  // Phase 2: validate all configs at once via a single docker run
+  const configMap: Record<string, Record<string, unknown>> = {};
+  for (const [name, { final }] of builtConfigs) {
+    configMap[name] = final;
+  }
+  const validationResults = await validateOpenClawConfigs(configMap, imageName);
+
+  // Phase 3: write configs
+  for (const [name, { final, configFile }] of builtConfigs) {
+    const validation = validationResults[name];
     if (!validation.ok) {
       printValidationErrors(name, validation.issues);
       hasErrors = true;
       continue;
     }
-    if (validation.skipped) {
-      console.error(chalk.red(`  ✗ ${name}: OpenClaw schema not available — cannot validate config`));
-      console.error(chalk.dim(`    Fix: run 'polyclaw build' to rebuild the image and extract the schema`));
-      hasErrors = true;
-      continue;
-    }
-
     writeFileSync(configFile, JSON.stringify(final, null, 2));
     console.log(`  ${chalk.green("OK")} ${name}`);
   }

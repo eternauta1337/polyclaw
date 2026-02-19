@@ -204,46 +204,6 @@ function writeGlobalConfig(config: PolyclawGlobalConfig): void {
 }
 
 /**
- * Extract compiled dist/config/ from a Docker image to OPENCLAW_CLONE_PATH/dist/config/
- * so the host has the Zod schema for config validation.
- * Non-fatal: failure just means schema won't be available until next build.
- */
-function extractSchemaFromImage(imageName: string): void {
-  // destDir = ~/.polyclaw/openclaw/dist/config (via symlink if set)
-  const distDir = join(OPENCLAW_CLONE_PATH, "dist");
-  const destDir = join(distDir, "config");
-  const containerName = `polyclaw-schema-extract-${Date.now()}`;
-  try {
-    // Ensure parent dist/ exists; remove stale config/ dir if present
-    mkdirSync(distDir, { recursive: true });
-    if (existsSync(destDir)) {
-      rmSync(destDir, { recursive: true, force: true });
-    }
-    execSync(`docker create --name "${containerName}" "${imageName}"`, {
-      stdio: "pipe",
-      encoding: "utf-8",
-    });
-    // Copy the config/ directory itself into dist/ → results in dist/config/
-    // Avoid trailing /. which is not supported by the legacy Docker builder
-    execSync(`docker cp "${containerName}:/app/dist/config" "${distDir}/"`, {
-      stdio: "pipe",
-      encoding: "utf-8",
-    });
-    console.log(chalk.dim(`  Schema extracted to ${destDir}`));
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.warn(chalk.yellow(`  Warning: failed to extract schema from image — ${msg}`));
-    console.warn(chalk.dim(`  Run 'polyclaw build' again to retry`));
-  } finally {
-    try {
-      execSync(`docker rm "${containerName}"`, { stdio: "pipe", encoding: "utf-8" });
-    } catch {
-      // ignore cleanup errors
-    }
-  }
-}
-
-/**
  * Set the global openclaw path, persisted to ~/.polyclaw/config.json.
  * Also creates the symlink ~/.polyclaw/openclaw → <path>.
  */
@@ -397,9 +357,6 @@ export function buildImage(imageName: string, openclawPath: string, opts: { noCa
   });
 
   console.log(chalk.green(`  Image ${imageName} built successfully`));
-
-  // Extract compiled schema to host for config validation
-  extractSchemaFromImage(imageName);
 }
 
 /**

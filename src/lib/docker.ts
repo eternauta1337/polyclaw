@@ -212,11 +212,16 @@ function extractSchemaFromImage(imageName: string): void {
   const destDir = join(OPENCLAW_CLONE_PATH, "dist", "config");
   try {
     mkdirSync(destDir, { recursive: true });
-    const tarData = execSync(`docker run --rm "${imageName}" tar -cC /app/dist/config .`);
+    // maxBuffer: dist/config is ~1.5MB so we need more than the default 1MB
+    const tarData = execSync(`docker run --rm "${imageName}" tar -cC /app/dist/config .`, {
+      maxBuffer: 50 * 1024 * 1024,
+    });
     execSync(`tar -x -C "${destDir}"`, { input: tarData });
     console.log(chalk.dim(`  Schema extracted to ${destDir}`));
-  } catch {
-    // Non-fatal — schema just won't be available on host
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(chalk.yellow(`  Warning: failed to extract schema from image — ${msg}`));
+    console.warn(chalk.dim(`  Run 'polyclaw build' again to retry`));
   }
 }
 

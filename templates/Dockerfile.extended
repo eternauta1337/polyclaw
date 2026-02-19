@@ -33,15 +33,14 @@ RUN ARCH=$(dpkg --print-architecture | sed 's/amd64/x86_64/;s/arm64/aarch64/') \
     && tar -C / -Jxpf /tmp/s6-arch.tar.xz \
     && rm /tmp/s6-arch.tar.xz
 
-# Pre-create /run/service so node user can write service dirs at runtime
-RUN mkdir -p /run/service && chown node:node /run/service
-
 # cont-init.d: runs entrypoint.ts as node user before services start
-# entrypoint.ts sets up skills and generates s6 service dirs
-RUN mkdir -p /etc/s6-overlay/cont-init.d \
-    && printf '#!/bin/sh\nexec /command/s6-setuidgid node node --experimental-strip-types /app/entrypoint.ts\n' \
-       > /etc/s6-overlay/cont-init.d/01-polyclaw-setup \
-    && chmod +x /etc/s6-overlay/cont-init.d/01-polyclaw-setup
+# NOTE: use /etc/cont-init.d/ (legacy API), processed by legacy-cont-init.
+#       /etc/s6-overlay/cont-init.d/ exists but s6 v3 does NOT auto-execute scripts there.
+# Script recreates /run/service with node ownership (s6-linux-init creates it as root).
+RUN mkdir -p /etc/cont-init.d \
+    && printf '#!/bin/sh\nmkdir -p /run/service\nchown node:node /run/service\nexec /command/s6-setuidgid node node --experimental-strip-types /app/entrypoint.ts\n' \
+       > /etc/cont-init.d/01-polyclaw-setup \
+    && chmod +x /etc/cont-init.d/01-polyclaw-setup
 
 # Verify installations
 RUN gh --version && tmux -V && pdftotext -v 2>&1 | head -1

@@ -173,11 +173,13 @@ function writeS6Service(
 
   const cdLine = opts.cwd ? `cd ${opts.cwd}\n` : "";
 
-  // run script: drop to specified user, or stay as root if user === "root"
+  // run script: with-contenv injects container env vars (s6-overlay v3 stores
+  // them separately; without this, services don't receive Docker env_file vars).
+  // Then drop to specified user, or stay as root if user === "root".
   const user = opts.user || "node";
   const execLine = user === "root"
-    ? `exec ${command}`
-    : `exec /command/s6-setuidgid ${user} ${command}`;
+    ? `exec /command/with-contenv ${command}`
+    : `exec /command/with-contenv /command/s6-setuidgid ${user} ${command}`;
   const runScript = `#!/bin/sh\n${conditionCheck}${cdLine}${execLine}\n`;
   writeFileSync(`${dir}/run`, runScript, { mode: 0o755 });
 

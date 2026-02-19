@@ -213,7 +213,7 @@ program
     }
 
     const config = loadConfig(paths);
-    await buildCommand(config, paths, { openclawPath: options.openclawPath, noCache: options.noCache });
+    await buildCommand(config, paths, { openclawPath: options.openclawPath, noCache: !options.cache });
   });
 
 // tail command (shortcut for logs -f --tail 100)

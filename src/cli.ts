@@ -9,7 +9,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig, resolveConfigPaths } from "./lib/config.js";
-import { requireDocker } from "./lib/docker.js";
+import { requireDocker, setOpenclawPath } from "./lib/docker.js";
 import { initCommand } from "./commands/init.js";
 import { generateCommand } from "./commands/generate.js";
 import { startCommand } from "./commands/start.js";
@@ -44,6 +44,14 @@ program
   .description("Initialize OpenClaw Docker setup in current directory")
   .action(() => {
     initCommand();
+  });
+
+// set-path command - doesn't need config
+program
+  .command("set-path <path>")
+  .description("Set the global openclaw repo path (persisted to ~/.polyclaw/config.json)")
+  .action((path: string) => {
+    setOpenclawPath(path);
   });
 
 // Helper to load config for commands that need it

@@ -5,7 +5,7 @@
 import { execSync, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { join, resolve } from "node:path";
-import { existsSync, lstatSync, mkdirSync, readlinkSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import chalk from "chalk";
 import type { ConfigPaths, InfraConfig } from "./config.js";
@@ -183,6 +183,59 @@ export function imageExists(imageName: string): boolean {
 const DEFAULT_OPENCLAW_REPO = "git@github.com:eternauta1337/openclaw.git";
 const POLYCLAW_HOME = join(homedir(), ".polyclaw");
 const OPENCLAW_CLONE_PATH = join(POLYCLAW_HOME, "openclaw");
+const GLOBAL_CONFIG_PATH = join(POLYCLAW_HOME, "config.json");
+
+interface PolyclawGlobalConfig {
+  openclawPath?: string;
+}
+
+function readGlobalConfig(): PolyclawGlobalConfig {
+  if (!existsSync(GLOBAL_CONFIG_PATH)) return {};
+  try {
+    return JSON.parse(readFileSync(GLOBAL_CONFIG_PATH, "utf-8"));
+  } catch {
+    return {};
+  }
+}
+
+function writeGlobalConfig(config: PolyclawGlobalConfig): void {
+  if (!existsSync(POLYCLAW_HOME)) mkdirSync(POLYCLAW_HOME, { recursive: true });
+  writeFileSync(GLOBAL_CONFIG_PATH, JSON.stringify(config, null, 2));
+}
+
+/**
+ * Extract compiled dist/config/ from a Docker image to OPENCLAW_CLONE_PATH/dist/config/
+ * so the host has the Zod schema for config validation.
+ * Non-fatal: failure just means schema won't be available until next build.
+ */
+function extractSchemaFromImage(imageName: string): void {
+  const destDir = join(OPENCLAW_CLONE_PATH, "dist", "config");
+  try {
+    mkdirSync(destDir, { recursive: true });
+    const tarData = execSync(`docker run --rm "${imageName}" tar -cC /app/dist/config .`);
+    execSync(`tar -x -C "${destDir}"`, { input: tarData });
+    console.log(chalk.dim(`  Schema extracted to ${destDir}`));
+  } catch {
+    // Non-fatal — schema just won't be available on host
+  }
+}
+
+/**
+ * Set the global openclaw path, persisted to ~/.polyclaw/config.json.
+ * Also creates the symlink ~/.polyclaw/openclaw → <path>.
+ */
+export function setOpenclawPath(inputPath: string): void {
+  const resolved = resolve(inputPath);
+  if (!existsSync(join(resolved, "Dockerfile"))) {
+    console.error(chalk.red(`Error: Not an openclaw repo (Dockerfile not found at ${resolved})`));
+    process.exit(1);
+  }
+  const current = readGlobalConfig();
+  writeGlobalConfig({ ...current, openclawPath: resolved });
+  ensureSymlink(resolved);
+  console.log(chalk.green(`OpenClaw path set: ${resolved}`));
+  console.log(chalk.dim(`Run 'polyclaw build' to rebuild the image and make schema available`));
+}
 
 function promptYesNo(question: string): Promise<boolean> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -265,12 +318,24 @@ export async function findOpenclawRepo(
     return OPENCLAW_CLONE_PATH;
   }
 
-  // 3. Check ~/.polyclaw/openclaw (real dir or existing symlink)
+  // 3. Global config (~/.polyclaw/config.json openclawPath)
+  const globalConfig = readGlobalConfig();
+  if (globalConfig.openclawPath) {
+    const globalPath = resolve(globalConfig.openclawPath);
+    if (existsSync(join(globalPath, "Dockerfile"))) {
+      ensureSymlink(globalPath);
+      return OPENCLAW_CLONE_PATH;
+    }
+    console.log(chalk.yellow(`  Warning: Configured openclaw path not found: ${globalPath}`));
+    console.log(chalk.yellow(`  Run 'polyclaw set-path <path>' to update it`));
+  }
+
+  // 4. Check ~/.polyclaw/openclaw (real dir or existing symlink)
   if (existsSync(join(OPENCLAW_CLONE_PATH, "Dockerfile"))) {
     return OPENCLAW_CLONE_PATH;
   }
 
-  // 4. Ask whether to clone
+  // 5. Ask whether to clone
   const repoUrl = dockerConfig?.openclaw_repo || DEFAULT_OPENCLAW_REPO;
   console.log(chalk.yellow(`  OpenClaw repo not found.`));
   const yes = await promptYesNo(
@@ -308,6 +373,9 @@ export function buildImage(imageName: string, openclawPath: string): void {
   });
 
   console.log(chalk.green(`  Image ${imageName} built successfully`));
+
+  // Extract compiled schema to host for config validation
+  extractSchemaFromImage(imageName);
 }
 
 /**

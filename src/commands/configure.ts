@@ -99,7 +99,11 @@ export async function configureCommand(config: InfraConfig, paths: ConfigPaths):
       continue;
     }
     if (validation.skipped) {
-      console.log(chalk.yellow(`  ⚠ ${name}: OpenClaw schema not available — skipping structural validation`));
+      console.error(chalk.red(`  ✗ ${name}: OpenClaw schema not available — cannot validate config`));
+      console.error(chalk.dim(`    Schema expected at: ${process.env.HOME}/.polyclaw/openclaw/dist/config/zod-schema.js`));
+      console.error(chalk.dim(`    Fix: run 'polyclaw build' to rebuild the image and extract the schema`));
+      hasErrors = true;
+      continue;
     }
 
     writeFileSync(configFile, JSON.stringify(final, null, 2));

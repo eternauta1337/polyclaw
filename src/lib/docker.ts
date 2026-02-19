@@ -209,15 +209,23 @@ function writeGlobalConfig(config: PolyclawGlobalConfig): void {
  * Non-fatal: failure just means schema won't be available until next build.
  */
 function extractSchemaFromImage(imageName: string): void {
-  const destDir = join(OPENCLAW_CLONE_PATH, "dist", "config");
+  // destDir = ~/.polyclaw/openclaw/dist/config (via symlink if set)
+  const distDir = join(OPENCLAW_CLONE_PATH, "dist");
+  const destDir = join(distDir, "config");
   const containerName = `polyclaw-schema-extract-${Date.now()}`;
   try {
-    mkdirSync(destDir, { recursive: true });
+    // Ensure parent dist/ exists; remove stale config/ dir if present
+    mkdirSync(distDir, { recursive: true });
+    if (existsSync(destDir)) {
+      rmSync(destDir, { recursive: true, force: true });
+    }
     execSync(`docker create --name "${containerName}" "${imageName}"`, {
       stdio: "pipe",
       encoding: "utf-8",
     });
-    execSync(`docker cp "${containerName}:/app/dist/config/." "${destDir}/"`, {
+    // Copy the config/ directory itself into dist/ → results in dist/config/
+    // Avoid trailing /. which is not supported by the legacy Docker builder
+    execSync(`docker cp "${containerName}:/app/dist/config" "${distDir}/"`, {
       stdio: "pipe",
       encoding: "utf-8",
     });

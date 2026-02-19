@@ -210,18 +210,28 @@ function writeGlobalConfig(config: PolyclawGlobalConfig): void {
  */
 function extractSchemaFromImage(imageName: string): void {
   const destDir = join(OPENCLAW_CLONE_PATH, "dist", "config");
+  const containerName = `polyclaw-schema-extract-${Date.now()}`;
   try {
     mkdirSync(destDir, { recursive: true });
-    // maxBuffer: dist/config is ~1.5MB so we need more than the default 1MB
-    const tarData = execSync(`docker run --rm "${imageName}" tar -cC /app/dist/config .`, {
-      maxBuffer: 50 * 1024 * 1024,
+    execSync(`docker create --name "${containerName}" "${imageName}"`, {
+      stdio: "pipe",
+      encoding: "utf-8",
     });
-    execSync(`tar -x -C "${destDir}"`, { input: tarData });
+    execSync(`docker cp "${containerName}:/app/dist/config/." "${destDir}/"`, {
+      stdio: "pipe",
+      encoding: "utf-8",
+    });
     console.log(chalk.dim(`  Schema extracted to ${destDir}`));
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(chalk.yellow(`  Warning: failed to extract schema from image — ${msg}`));
     console.warn(chalk.dim(`  Run 'polyclaw build' again to retry`));
+  } finally {
+    try {
+      execSync(`docker rm "${containerName}"`, { stdio: "pipe", encoding: "utf-8" });
+    } catch {
+      // ignore cleanup errors
+    }
   }
 }
 

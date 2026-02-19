@@ -9,7 +9,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig, resolveConfigPaths } from "./lib/config.js";
-import { requireDocker, setOpenclawPath } from "./lib/docker.js";
+import { dockerCompose, requireDocker, setOpenclawPath } from "./lib/docker.js";
 import { initCommand } from "./commands/init.js";
 import { generateCommand } from "./commands/generate.js";
 import { startCommand } from "./commands/start.js";
@@ -79,9 +79,9 @@ function withConfig(
 // start command
 program
   .command("start")
-  .description("Sync folders, generate compose, and start containers")
+  .description("Sync config + start containers. Use after: polyclaw.json5 changes, polyclaw build, or first run.")
   .option("--no-detach", "Run in foreground instead of detached mode")
-  .option("--recreate", "Force recreate containers (use after rebuild)")
+  .option("--recreate", "Force recreate all containers (use after env changes that require restart)")
   .option("--openclaw-path <path>", "Path to openclaw repo (for building image)")
   .action(async (options) => {
     requireDocker();
@@ -102,13 +102,15 @@ program
     });
   });
 
-// restart command (alias for start --recreate)
+// restart command
+// With [instance]: simple docker restart (fast, no recreate). Use after: config file edits on bind-mount.
+// Without [instance]: full recreate of all containers (= start --recreate). Use after: env changes.
 program
-  .command("restart")
-  .description("Restart containers (alias for start --recreate)")
-  .option("--no-detach", "Run in foreground instead of detached mode")
-  .option("--openclaw-path <path>", "Path to openclaw repo (for building image)")
-  .action(async (options) => {
+  .command("restart [instance]")
+  .description("Restart one instance (e.g. 'ale') or all containers. Use after config edits or env changes.")
+  .option("--no-detach", "Run in foreground instead of detached mode (only applies when restarting all)")
+  .option("--openclaw-path <path>", "Path to openclaw repo (only applies when restarting all)")
+  .action(async (instance, options) => {
     requireDocker();
     const opts = program.opts();
     const paths = resolveConfigPaths(opts.config);
@@ -119,12 +121,18 @@ program
       process.exit(1);
     }
 
-    const config = loadConfig(paths);
-    await startCommand(config, paths, {
-      detach: options.detach,
-      recreate: true,
-      openclawPath: options.openclawPath,
-    });
+    if (instance) {
+      // Simple restart of a single container via docker compose
+      dockerCompose(["restart", instance], paths);
+    } else {
+      // Full recreate of all containers
+      const config = loadConfig(paths);
+      await startCommand(config, paths, {
+        detach: options.detach,
+        recreate: true,
+        openclawPath: options.openclawPath,
+      });
+    }
   });
 
 // stop command
@@ -173,7 +181,7 @@ program
 // configure command
 program
   .command("configure")
-  .description("Apply configuration to running containers")
+  .description("Apply polyclaw.json5 config changes to running containers (no restart needed for most changes).")
   .action(withConfig((config, paths) => {
     requireDocker();
     return configureCommand(config, paths);
@@ -199,7 +207,7 @@ program
 // build command
 program
   .command("build")
-  .description("Build or rebuild the Docker image")
+  .description("Build/rebuild the Docker image. Run 'start' after to apply to containers.")
   .option("--openclaw-path <path>", "Path to openclaw repo")
   .option("--no-cache", "Disable Docker layer cache (force full rebuild)")
   .action(async (options) => {

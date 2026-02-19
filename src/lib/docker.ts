@@ -377,11 +377,12 @@ export async function findOpenclawRepo(
 /**
  * Build the openclaw Docker image
  */
-export function buildImage(imageName: string, openclawPath: string): void {
+export function buildImage(imageName: string, openclawPath: string, opts: { noCache?: boolean } = {}): void {
   console.log(chalk.green(`=== Building ${imageName} ===`));
   console.log(chalk.dim(`  From: ${openclawPath}`));
 
-  execSync(`docker build -t ${imageName} .`, {
+  const noCacheFlag = opts.noCache ? " --no-cache" : "";
+  execSync(`docker build${noCacheFlag} -t ${imageName} .`, {
     cwd: openclawPath,
     stdio: "inherit",
     encoding: "utf-8",

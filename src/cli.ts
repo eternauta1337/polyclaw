@@ -201,6 +201,7 @@ program
   .command("build")
   .description("Build or rebuild the Docker image")
   .option("--openclaw-path <path>", "Path to openclaw repo")
+  .option("--no-cache", "Disable Docker layer cache (force full rebuild)")
   .action(async (options) => {
     requireDocker();
     const opts = program.opts();
@@ -212,7 +213,7 @@ program
     }
 
     const config = loadConfig(paths);
-    await buildCommand(config, paths, { openclawPath: options.openclawPath });
+    await buildCommand(config, paths, { openclawPath: options.openclawPath, noCache: options.noCache });
   });
 
 // tail command (shortcut for logs -f --tail 100)

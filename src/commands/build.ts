@@ -12,10 +12,11 @@ import { findOpenclawRepo, buildImage, buildExtendedImage, buildPolyclawBase } f
 export async function buildCommand(
   config: InfraConfig,
   paths: ConfigPaths,
-  options: { openclawPath?: string } = {}
+  options: { openclawPath?: string; noCache?: boolean } = {}
 ): Promise<void> {
   const imageName = config.docker?.image || DEFAULTS.image;
   const repoPath = await findOpenclawRepo(options.openclawPath, config.docker);
+  const noCache = options.noCache ?? false;
 
   // Check if there's a Dockerfile.extended
   const hasExtended = existsSync(join(paths.baseDir, "Dockerfile.extended"));
@@ -23,7 +24,7 @@ export async function buildCommand(
   if (hasExtended && imageName !== DEFAULTS.image) {
     // Build full chain: openclaw:local -> polyclaw:base -> extended
     console.log(chalk.dim(`Building base image first (${DEFAULTS.image})...`));
-    buildImage(DEFAULTS.image, repoPath);
+    buildImage(DEFAULTS.image, repoPath, { noCache });
     console.log();
     // Always rebuild polyclaw:base so it picks up changes from openclaw:local
     buildPolyclawBase();
@@ -31,6 +32,6 @@ export async function buildCommand(
     buildExtendedImage(imageName, paths.baseDir);
   } else {
     // Just build the requested image
-    buildImage(imageName, repoPath);
+    buildImage(imageName, repoPath, { noCache });
   }
 }

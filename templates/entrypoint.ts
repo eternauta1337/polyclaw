@@ -3,14 +3,14 @@
 /**
  * OpenClaw Docker Entrypoint
  *
- * Executed when each container starts:
+ * Runs as a s6-overlay cont-init.d script at container startup:
  * 1. Creates workspace/skills combining bundled + custom
- * 2. Starts the gateway with passed arguments
+ * 2. Generates s6 service dirs in /run/service/ for gateway + custom services
+ *
+ * s6-overlay then supervises all services with automatic restart.
  */
 
-import { spawnSync } from "node:child_process";
 import {
-  chmodSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -30,8 +30,7 @@ const SKILLS_DIR = `${CONFIG_DIR}/skills`;
 const BUNDLED_SKILLS = "/app/skills";
 const CUSTOM_SKILLS = "/skills-custom";
 const SERVICES_FILE = `${CONFIG_DIR}/services.json`;
-const START_SCRIPT = "/tmp/start-services.sh";
-const STARTUP_HOOK = "/tmp/polyclaw-startup.sh";
+const S6_SERVICES_DIR = "/run/service";
 
 interface ServiceConfig {
   name: string;
@@ -128,9 +127,10 @@ function linkSkillBinaries(): void {
           if (existsSync(link)) rmSync(link);
           symlinkSync(target, link);
           try {
-            chmodSync(target, 0o755);
+            // chmodSync intentionally omitted — read-only mounts throw, and
+            // files should already have correct permissions from the host
           } catch {
-            // Read-only mount — file should already have correct permissions from host
+            // no-op
           }
           linked++;
         } catch (err: any) {
@@ -148,123 +148,72 @@ function linkSkillBinaries(): void {
 }
 
 /**
- * Generate ecosystem config and start all services via pm2-runtime
- * This makes pm2 the main process (PID 1) managing both gateway and services
+ * Write an s6 service dir to /run/service/{name}/
+ * The run script uses /command/s6-setuidgid to drop privileges to the node user.
  */
-function startWithPm2(args: string[]): void {
-  // Check if pm2 is available
-  const pm2Check = spawnSync("which", ["pm2"]);
-  const hasPm2 = pm2Check.status === 0;
+function writeS6Service(
+  name: string,
+  command: string,
+  opts: { cwd?: string; condition?: string; restartDelay?: number } = {}
+): void {
+  const dir = `${S6_SERVICES_DIR}/${name}`;
+  mkdirSync(dir, { recursive: true });
 
-  if (!hasPm2) {
-    // Fallback: run gateway directly without pm2
-    console.log("[entrypoint] pm2 not available, running gateway directly");
-    startGatewayDirect(args);
-    return;
+  // Condition check: pause and exit (causing s6 restart) if condition not met
+  let conditionCheck = "";
+  if (opts.condition?.startsWith("file:")) {
+    const file = opts.condition.slice(5);
+    conditionCheck = `[ ! -f "${file}" ] && sleep 30 && exit 0\n`;
   }
 
-  // Build apps list starting with gateway
-  const apps: Array<Record<string, unknown>> = [
-    {
-      name: "gateway",
-      script: "dist/index.js",
-      args: ["gateway", ...args].join(" "),
-      cwd: "/app",
-      interpreter: "node",
-      autorestart: true,
-      restart_delay: 1000,
-    },
-  ];
+  const cdLine = opts.cwd ? `cd ${opts.cwd}\n` : "";
 
-  // Add custom services if configured
-  if (existsSync(SERVICES_FILE)) {
-    const services: ServiceConfig[] = JSON.parse(
-      readFileSync(SERVICES_FILE, "utf-8")
-    );
+  // run script: executed by s6-svscan, drops to node user via s6-setuidgid
+  const runScript = `#!/bin/sh\n${conditionCheck}${cdLine}exec /command/s6-setuidgid node ${command}\n`;
+  writeFileSync(`${dir}/run`, runScript, { mode: 0o755 });
 
-    for (const svc of services) {
-      // Create wrapper script that checks condition before running
-      const wrapperPath = `/tmp/svc-${svc.name}.sh`;
-      const conditionCheck = svc.condition
-        ? `if [ ! -f "${svc.condition.replace("file:", "")}" ]; then echo "[${svc.name}] Condition not met, waiting..."; sleep 60; exit 0; fi`
-        : "";
-
-      const wrapperScript = `#!/bin/bash
-${conditionCheck}
-exec ${svc.command}
-`;
-      writeFileSync(wrapperPath, wrapperScript, { mode: 0o755 });
-
-      apps.push({
-        name: svc.name,
-        script: wrapperPath,
-        interpreter: "/bin/bash",
-        autorestart: true,
-        restart_delay: 5000,
-      });
-    }
-  }
-
-  const serviceCount = apps.length - 1; // excluding gateway
-  console.log(`[entrypoint] Starting gateway + ${serviceCount} service(s) via pm2...`);
-
-  // Write ecosystem file
-  const ecosystem = { apps };
-  const ecosystemPath = "/tmp/ecosystem.config.json";
-  writeFileSync(ecosystemPath, JSON.stringify(ecosystem, null, 2));
-
-  // Write start script — run startup hook if present, then exec pm2-runtime
-  writeFileSync(
-    START_SCRIPT,
-    `#!/bin/sh
-cd /app
-[ -f ${STARTUP_HOOK} ] && . ${STARTUP_HOOK}
-exec pm2-runtime start ${ecosystemPath}
-`,
-    { mode: 0o755 },
-  );
+  // finish script: delay before s6 restarts the service (prevents rapid respawn)
+  const delay = opts.restartDelay ?? 5;
+  writeFileSync(`${dir}/finish`, `#!/bin/sh\nsleep ${delay}\n`, { mode: 0o755 });
 }
 
 /**
- * Fallback: run gateway directly without pm2
+ * Generate s6 service dirs for gateway + any custom services from services.json.
+ * s6-svscan will pick these up and supervise them with automatic restart.
  */
-function startGatewayDirect(args: string[]): void {
-  console.log(`[entrypoint] Starting gateway directly (no pm2)...`);
+function generateS6Services(): void {
+  mkdirSync(S6_SERVICES_DIR, { recursive: true });
 
-  // Write start script — run startup hook if present, then exec gateway
-  writeFileSync(
-    START_SCRIPT,
-    `#!/bin/sh
-cd /app
-[ -f ${STARTUP_HOOK} ] && . ${STARTUP_HOOK}
-exec node dist/index.js gateway ${args.join(" ")}
-`,
-    { mode: 0o755 },
-  );
-}
+  // Gateway: always present, restarts quickly on crash
+  // --bind lan is configured in openclaw.json (gateway.bind: "lan")
+  writeS6Service("gateway", "node dist/index.js gateway", {
+    cwd: "/app",
+    restartDelay: 1,
+  });
+  console.log("[entrypoint] s6 service registered: gateway");
 
-function main(): void {
-  const args = process.argv.slice(2);
-  setupSkills();
-
-  // Only use pm2 if there are extra services to manage
-  let hasServices = false;
+  // Custom services from services.json (written by polyclaw syncInstanceFolders)
   if (existsSync(SERVICES_FILE)) {
     try {
       const services: ServiceConfig[] = JSON.parse(
         readFileSync(SERVICES_FILE, "utf-8")
       );
-      hasServices = services.length > 0;
+      for (const svc of services) {
+        writeS6Service(svc.name, svc.command, {
+          condition: svc.condition,
+          restartDelay: 5,
+        });
+        console.log(`[entrypoint] s6 service registered: ${svc.name}`);
+      }
     } catch {
-      // Invalid JSON, treat as no services
+      console.warn("[entrypoint] Failed to parse services.json, skipping");
     }
   }
+}
 
-  if (hasServices) {
-    startWithPm2(args);
-  } else {
-    startGatewayDirect(args);
-  }
+function main(): void {
+  setupSkills();
+  generateS6Services();
 }
 
 main();

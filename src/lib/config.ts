@@ -55,14 +55,12 @@ export interface InfraConfig {
     resources?: DockerResources;
     // Network mode: "isolated" (one network per instance) or "shared" (single network)
     network?: "isolated" | "shared";
-    // Path to a shell script to run at container startup (before gateway)
-    startup_script?: string;
   };
   // Project-level workspace files synced to all instances
   workspace?: {
     path?: string; // Default: "./workspace"
   };
-  // Background services to run in containers (managed by pm2)
+  // Background services to run alongside the gateway (supervised by s6-overlay)
   services?: ServiceConfig[];
   // OpenClaw config - passed through directly to all instances
   config?: Record<string, unknown>;

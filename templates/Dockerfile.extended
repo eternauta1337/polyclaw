@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     gnupg \
     tmux \
     poppler-utils \
+    xz-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Install GitHub CLI
@@ -21,11 +22,28 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
     && apt-get install -y gh \
     && rm -rf /var/lib/apt/lists/*
 
-# Install pm2 globally for service management
-RUN npm install -g pm2
+# Install s6-overlay for process supervision (replaces pm2)
+# Manages gateway + custom services with automatic restart
+ARG S6_OVERLAY_VERSION=3.2.0.2
+RUN ARCH=$(dpkg --print-architecture | sed 's/amd64/x86_64/;s/arm64/aarch64/') \
+    && curl -L -o /tmp/s6-noarch.tar.xz "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz" \
+    && tar -C / -Jxpf /tmp/s6-noarch.tar.xz \
+    && rm /tmp/s6-noarch.tar.xz \
+    && curl -L -o /tmp/s6-arch.tar.xz "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${ARCH}.tar.xz" \
+    && tar -C / -Jxpf /tmp/s6-arch.tar.xz \
+    && rm /tmp/s6-arch.tar.xz
 
-# Switch back to node user
-USER node
+# Pre-create /run/service so node user can write service dirs at runtime
+RUN mkdir -p /run/service && chown node:node /run/service
+
+# cont-init.d: runs entrypoint.ts as node user before services start
+# entrypoint.ts sets up skills and generates s6 service dirs
+RUN printf '#!/bin/sh\nexec /command/s6-setuidgid node node --experimental-strip-types /app/entrypoint.ts\n' \
+    > /etc/s6-overlay/cont-init.d/01-polyclaw-setup \
+    && chmod +x /etc/s6-overlay/cont-init.d/01-polyclaw-setup
 
 # Verify installations
-RUN gh --version && tmux -V && pdftotext -v 2>&1 | head -1 && pm2 --version
+RUN gh --version && tmux -V && pdftotext -v 2>&1 | head -1
+
+# s6-overlay init must run as root (PID 1); drops to node for individual services
+ENTRYPOINT ["/init"]

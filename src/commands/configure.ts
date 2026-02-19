@@ -28,6 +28,46 @@ function merge(a: Record<string, unknown>, b: Record<string, unknown>): Record<s
   return result;
 }
 
+/** Write exec-approvals.json for an instance if configured */
+function writeExecApprovals(
+  instanceDir: string,
+  globalApprovals: Record<string, unknown> | undefined,
+  instanceApprovals: Record<string, unknown> | undefined,
+): void {
+  const approvalsFile = join(instanceDir, "exec-approvals.json");
+
+  if (!globalApprovals && !instanceApprovals) {
+    return; // No exec approvals configured
+  }
+
+  // Merge global <- instance (instance wins)
+  let final: Record<string, unknown> = {};
+  if (globalApprovals) {
+    final = merge({}, globalApprovals);
+  }
+  if (instanceApprovals) {
+    final = merge(final, instanceApprovals);
+  }
+
+  writeFileSync(approvalsFile, JSON.stringify(final, null, 2));
+}
+
+/** Write per-agent workspace files for an instance */
+function writeWorkspaceFiles(
+  instanceDir: string,
+  workspaceFiles: Record<string, Record<string, string>>,
+): void {
+  for (const [workspaceDir, files] of Object.entries(workspaceFiles)) {
+    const targetDir = join(instanceDir, workspaceDir);
+    if (!existsSync(targetDir)) {
+      mkdirSync(targetDir, { recursive: true });
+    }
+    for (const [filename, content] of Object.entries(files)) {
+      writeFileSync(join(targetDir, filename), content);
+    }
+  }
+}
+
 export async function configureCommand(config: InfraConfig, paths: ConfigPaths): Promise<boolean> {
   // Sync project-level workspace files before writing config
   syncWorkspaceFiles(config, paths);
@@ -118,7 +158,19 @@ export async function configureCommand(config: InfraConfig, paths: ConfigPaths):
       hasErrors = true;
       continue;
     }
+    const instanceDir = join(paths.instancesDir, name);
+    const inst = config.instances[name];
+
     writeFileSync(configFile, JSON.stringify(final, null, 2));
+
+    // Write exec-approvals.json if configured (global or per-instance)
+    writeExecApprovals(instanceDir, config.execApprovals, inst.execApprovals);
+
+    // Write per-agent workspace files if configured
+    if (inst.workspaceFiles) {
+      writeWorkspaceFiles(instanceDir, inst.workspaceFiles);
+    }
+
     console.log(`  ${chalk.green("OK")} ${name}`);
   }
 

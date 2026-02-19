@@ -32,6 +32,10 @@ export interface InstanceConfig {
   config?: Record<string, unknown>;
   // Extra volumes to mount
   volumes?: VolumeMount[];
+  // Exec approvals config (written to exec-approvals.json)
+  execApprovals?: Record<string, unknown>;
+  // Per-agent workspace files: { "workspace-user": { "AGENTS.md": "content..." } }
+  workspaceFiles?: Record<string, Record<string, string>>;
 }
 
 // InfraConfig: polyclaw extensions + openclaw config passthrough
@@ -66,6 +70,8 @@ export interface InfraConfig {
   };
   // Background services to run alongside the gateway (supervised by s6-overlay)
   services?: ServiceConfig[];
+  // Global exec approvals (merged with per-instance, instance wins)
+  execApprovals?: Record<string, unknown>;
   // OpenClaw config - passed through directly to all instances
   config?: Record<string, unknown>;
 }

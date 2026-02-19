@@ -5,7 +5,7 @@
 import { execSync, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { join, resolve } from "node:path";
-import { existsSync, lstatSync, mkdirSync, readlinkSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readlinkSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import chalk from "chalk";
 import type { ConfigPaths, InfraConfig } from "./config.js";
@@ -328,17 +328,21 @@ RUN echo '#!/bin/sh' > /usr/local/bin/openclaw && \\
 USER node
 `;
 
+  // Use a dedicated empty build context dir to avoid tmpdir files that Docker can't read
+  const buildCtxDir = join(tmpdir(), "polyclaw-base-ctx");
+  mkdirSync(buildCtxDir, { recursive: true });
   writeFileSync(dockerfilePath, dockerfileContent);
 
   try {
     execSync(`docker build -f "${dockerfilePath}" -t polyclaw:base .`, {
-      cwd: tmpdir(),
+      cwd: buildCtxDir,
       stdio: "inherit",
       encoding: "utf-8",
     });
     console.log(chalk.green(`  Image polyclaw:base built successfully`));
   } finally {
     unlinkSync(dockerfilePath);
+    rmSync(buildCtxDir, { recursive: true, force: true });
   }
 }
 

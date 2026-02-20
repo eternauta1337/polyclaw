@@ -2,7 +2,7 @@
  * configure command - Write configuration files for instances
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import chalk from "chalk";
@@ -36,8 +36,14 @@ function writeExecApprovals(
 ): void {
   const approvalsFile = join(instanceDir, "exec-approvals.json");
 
-  if (!globalApprovals && !instanceApprovals) {
-    return; // No exec approvals configured
+  const isEmpty = (obj: Record<string, unknown> | undefined) =>
+    !obj || Object.keys(obj).length === 0;
+
+  if (isEmpty(globalApprovals) && isEmpty(instanceApprovals)) {
+    if (existsSync(approvalsFile)) {
+      rmSync(approvalsFile);
+    }
+    return;
   }
 
   // Merge global <- instance (instance wins)

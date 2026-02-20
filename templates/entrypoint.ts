@@ -1,15 +1,17 @@
 #!/usr/bin/env node --experimental-strip-types
 
 /**
- * OpenClaw Docker Entrypoint
+ * OpenClaw Docker Entrypoint / Process Supervisor
  *
- * Runs as a s6-overlay cont-init.d script at container startup:
- * 1. Creates workspace/skills combining bundled + custom
- * 2. Generates s6 service dirs in /run/service/ for gateway + custom services
+ * Runs as PID 1 (root). Responsibilities:
+ * 1. Setup: workspace dirs, skills symlinks, skill CLI binaries
+ * 2. Supervisor: starts and restarts gateway + custom services from services.json
  *
- * s6-overlay then supervises all services with automatic restart.
+ * Services run as node (uid=1000) via spawn uid/gid options.
+ * Optional preCommand runs as root before spawning (e.g. chmod for VirtioFS bind mounts).
  */
 
+import { spawn, spawnSync } from "node:child_process";
 import {
   existsSync,
   lstatSync,
@@ -19,7 +21,6 @@ import {
   realpathSync,
   rmSync,
   symlinkSync,
-  writeFileSync,
 } from "node:fs";
 import { resolve } from "node:path";
 
@@ -30,16 +31,19 @@ const SKILLS_DIR = `${CONFIG_DIR}/skills`;
 const BUNDLED_SKILLS = "/app/skills";
 const CUSTOM_SKILLS = "/skills-custom";
 const SERVICES_FILE = `${CONFIG_DIR}/services.json`;
-const S6_SERVICES_DIR = "/run/service";
+
+const NODE_UID = 1000;
+const NODE_GID = 1000;
+const NODE_HOME = "/home/node";
 
 interface ServiceConfig {
   name: string;
   command: string;
   condition?: string;
-  // Default: "node". Use "root" to skip privilege drop (e.g. for services that
-  // need to write to macOS bind-mounted files, which appear as root via VirtioFS).
-  user?: string;
-  // Seconds to wait before s6 restarts the service after it exits. Default: 5.
+  // Optional command to run as root before spawning the service.
+  // Use for VirtioFS bind mount setup (e.g. chmod) that requires root.
+  preCommand?: string;
+  // Seconds to wait before restarting after exit. Default: 5.
   restartDelay?: number;
 }
 
@@ -153,60 +157,52 @@ function linkSkillBinaries(): void {
 }
 
 /**
- * Write an s6 service dir to /run/service/{name}/
- * By default drops privileges to the node user via s6-setuidgid.
- * Pass user: "root" to skip privilege drop (needed for services that write to
- * macOS bind-mounted files, which appear as root inside containers via VirtioFS).
+ * Start a service and restart it on exit.
+ * Runs as node (uid=1000). If preCommand is set, runs it as root first.
  */
-function writeS6Service(
-  name: string,
-  command: string,
-  opts: { cwd?: string; condition?: string; restartDelay?: number; user?: string } = {}
-): void {
-  const dir = `${S6_SERVICES_DIR}/${name}`;
-  mkdirSync(dir, { recursive: true });
-
-  // Condition check: pause and exit (causing s6 restart) if condition not met
-  let conditionCheck = "";
-  if (opts.condition?.startsWith("file:")) {
-    const file = opts.condition.slice(5);
-    conditionCheck = `[ ! -f "${file}" ] && sleep 30 && exit 0\n`;
+function startService(svc: ServiceConfig, attempt = 0): void {
+  // Condition check: wait and retry if not met
+  if (svc.condition?.startsWith("file:")) {
+    const file = svc.condition.slice(5);
+    if (!existsSync(file)) {
+      if (attempt === 0 || attempt % 10 === 0) {
+        console.log(`[supervisor] ${svc.name}: waiting for ${file}`);
+      }
+      setTimeout(() => startService(svc, attempt + 1), 30_000);
+      return;
+    }
   }
 
-  const cdLine = opts.cwd ? `cd ${opts.cwd}\n` : "";
+  // Pre-command: runs as root before spawning (e.g. chmod for VirtioFS bind mounts)
+  if (svc.preCommand) {
+    spawnSync("sh", ["-c", svc.preCommand], { stdio: "inherit" });
+  }
 
-  // run script: with-contenv injects container env vars (s6-overlay v3 stores
-  // them separately; without this, services don't receive Docker env_file vars).
-  // Then drop to specified user, or stay as root if user === "root".
-  const user = opts.user || "node";
-  const execLine = user === "root"
-    ? `exec /command/with-contenv ${command}`
-    : `exec /command/with-contenv /command/s6-setuidgid ${user} ${command}`;
-  const runScript = `#!/bin/sh\n${conditionCheck}${cdLine}${execLine}\n`;
-  writeFileSync(`${dir}/run`, runScript, { mode: 0o755 });
+  const child = spawn("sh", ["-c", svc.command], {
+    uid: NODE_UID,
+    gid: NODE_GID,
+    env: { ...process.env, HOME: NODE_HOME },
+    stdio: "inherit",
+  });
 
-  // finish script: delay before s6 restarts the service (prevents rapid respawn)
-  const delay = opts.restartDelay ?? 5;
-  writeFileSync(`${dir}/finish`, `#!/bin/sh\nsleep ${delay}\n`, { mode: 0o755 });
-  // timeout-finish: max ms s6 waits for finish script before SIGKILL-ing it.
-  // Must be > delay*1000 or s6 kills sleep before it completes.
-  writeFileSync(`${dir}/timeout-finish`, `${(delay + 2) * 1000}\n`);
+  console.log(`[supervisor] started: ${svc.name} (pid=${child.pid})`);
+
+  child.on("exit", (code, signal) => {
+    const delay = svc.restartDelay ?? 5;
+    console.log(`[supervisor] ${svc.name} exited (code=${code ?? signal}), restarting in ${delay}s`);
+    setTimeout(() => startService(svc), delay * 1000);
+  });
 }
 
-/**
- * Generate s6 service dirs for gateway + any custom services from services.json.
- * s6-svscan will pick these up and supervise them with automatic restart.
- */
-function generateS6Services(): void {
-  mkdirSync(S6_SERVICES_DIR, { recursive: true });
-
-  // Gateway: always present, restarts quickly on crash
-  // --bind lan is configured in openclaw.json (gateway.bind: "lan")
-  writeS6Service("gateway", "node dist/index.js gateway", {
-    cwd: "/app",
+function startAllServices(): void {
+  // Gateway: always present, runs from /app
+  const gateway: ServiceConfig = {
+    name: "gateway",
+    command: "cd /app && node dist/index.js gateway",
     restartDelay: 1,
-  });
-  console.log("[entrypoint] s6 service registered: gateway");
+  };
+  console.log("[supervisor] registered: gateway");
+  startService(gateway);
 
   // Custom services from services.json (written by polyclaw syncInstanceFolders)
   if (existsSync(SERVICES_FILE)) {
@@ -215,22 +211,21 @@ function generateS6Services(): void {
         readFileSync(SERVICES_FILE, "utf-8")
       );
       for (const svc of services) {
-        writeS6Service(svc.name, svc.command, {
-          condition: svc.condition,
-          restartDelay: svc.restartDelay ?? 5,
-          user: svc.user,
-        });
-        console.log(`[entrypoint] s6 service registered: ${svc.name}`);
+        console.log(`[supervisor] registered: ${svc.name}`);
+        startService(svc);
       }
     } catch {
-      console.warn("[entrypoint] Failed to parse services.json, skipping");
+      console.warn("[supervisor] failed to parse services.json, skipping custom services");
     }
   }
 }
 
+process.on("SIGTERM", () => process.exit(0));
+process.on("SIGINT", () => process.exit(0));
+
 function main(): void {
   setupSkills();
-  generateS6Services();
+  startAllServices();
 }
 
 main();

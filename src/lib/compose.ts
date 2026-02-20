@@ -116,7 +116,6 @@ services:
       - ${entrypointVolume}
     ports:
       - "127.0.0.1:${inst.port}:18789"
-    entrypoint: ["/init"]
     restart: unless-stopped${deployBlock}
     networks:
       - ${networkName}

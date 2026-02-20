@@ -22,28 +22,10 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
     && apt-get install -y gh \
     && rm -rf /var/lib/apt/lists/*
 
-# Install s6-overlay for process supervision (replaces pm2)
-# Manages gateway + custom services with automatic restart
-ARG S6_OVERLAY_VERSION=3.2.0.2
-RUN ARCH=$(dpkg --print-architecture | sed 's/amd64/x86_64/;s/arm64/aarch64/') \
-    && curl -L -o /tmp/s6-noarch.tar.xz "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz" \
-    && tar -C / -Jxpf /tmp/s6-noarch.tar.xz \
-    && rm /tmp/s6-noarch.tar.xz \
-    && curl -L -o /tmp/s6-arch.tar.xz "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${ARCH}.tar.xz" \
-    && tar -C / -Jxpf /tmp/s6-arch.tar.xz \
-    && rm /tmp/s6-arch.tar.xz
-
-# cont-init.d: runs entrypoint.ts as node user before services start
-# NOTE: use /etc/cont-init.d/ (legacy API), processed by legacy-cont-init.
-#       /etc/s6-overlay/cont-init.d/ exists but s6 v3 does NOT auto-execute scripts there.
-# Script recreates /run/service with node ownership (s6-linux-init creates it as root).
-RUN mkdir -p /etc/cont-init.d \
-    && printf '#!/bin/sh\nmkdir -p /run/service\nchown node:node /run/service\nexec /command/s6-setuidgid node node --experimental-strip-types /app/entrypoint.ts\n' \
-       > /etc/cont-init.d/01-polyclaw-setup \
-    && chmod +x /etc/cont-init.d/01-polyclaw-setup
-
 # Verify installations
 RUN gh --version && tmux -V && pdftotext -v 2>&1 | head -1
 
-# s6-overlay init must run as root (PID 1); drops to node for individual services
-ENTRYPOINT ["/init"]
+# entrypoint.ts runs as root (PID 1) to handle chmod on VirtioFS bind mounts,
+# then drops to node (uid=1000) for each service via spawn uid/gid
+ENTRYPOINT ["node", "--experimental-strip-types", "/app/entrypoint.ts"]
+CMD []

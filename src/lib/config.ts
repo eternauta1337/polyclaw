@@ -23,6 +23,8 @@ export interface ServiceConfig {
   // (needed for services that write to macOS bind-mounted files, which appear as root
   // inside Linux containers due to Docker Desktop VirtioFS UID mapping).
   user?: string;
+  // Seconds to wait before s6 restarts the service after it exits. Default: 5.
+  restartDelay?: number;
 }
 
 export interface InstanceConfig {

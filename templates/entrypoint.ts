@@ -39,6 +39,8 @@ interface ServiceConfig {
   // Default: "node". Use "root" to skip privilege drop (e.g. for services that
   // need to write to macOS bind-mounted files, which appear as root via VirtioFS).
   user?: string;
+  // Seconds to wait before s6 restarts the service after it exits. Default: 5.
+  restartDelay?: number;
 }
 
 function setupSkills(): void {
@@ -212,7 +214,7 @@ function generateS6Services(): void {
       for (const svc of services) {
         writeS6Service(svc.name, svc.command, {
           condition: svc.condition,
-          restartDelay: 5,
+          restartDelay: svc.restartDelay ?? 5,
           user: svc.user,
         });
         console.log(`[entrypoint] s6 service registered: ${svc.name}`);

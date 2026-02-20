@@ -188,6 +188,9 @@ function writeS6Service(
   // finish script: delay before s6 restarts the service (prevents rapid respawn)
   const delay = opts.restartDelay ?? 5;
   writeFileSync(`${dir}/finish`, `#!/bin/sh\nsleep ${delay}\n`, { mode: 0o755 });
+  // timeout-finish: max ms s6 waits for finish script before SIGKILL-ing it.
+  // Must be > delay*1000 or s6 kills sleep before it completes.
+  writeFileSync(`${dir}/timeout-finish`, `${(delay + 2) * 1000}\n`);
 }
 
 /**

@@ -137,13 +137,13 @@ program
 
 // stop command
 program
-  .command("stop")
-  .description("Stop and remove containers")
-  .action(() => {
+  .command("stop [instance]")
+  .description("Stop one instance (e.g. 'ale') or all containers")
+  .action((instance) => {
     requireDocker();
     const opts = program.opts();
     const paths = resolveConfigPaths(opts.config);
-    stopCommand(paths);
+    stopCommand(paths, instance);
   });
 
 // logs command

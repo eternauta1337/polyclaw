@@ -59,7 +59,7 @@ process.stdout.write(JSON.stringify(results));
     // Write script to a temp file inside the container then run with tsx.
     // tsx is a devDependency of openclaw, installed at /app/node_modules/.bin/tsx.
     const output = execSync(
-      `docker run --rm -i "${imageName}" sh -c "cat > /tmp/pc-validate.mts && /app/node_modules/.bin/tsx /tmp/pc-validate.mts"`,
+      `docker run --rm -i --entrypoint sh "${imageName}" -c "cat > /tmp/pc-validate.mts && /app/node_modules/.bin/tsx /tmp/pc-validate.mts"`,
       { input: script, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }
     );
     const results: ValidationResult[] = JSON.parse(output);

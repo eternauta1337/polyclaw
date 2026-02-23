@@ -104,6 +104,10 @@ services:
     const networkMode = config.docker?.network || "isolated";
     const networkName = networkMode === "shared" ? `${project}-net` : `net-${name}`;
 
+    // Shadow services.json inside the RW instance mount with a read-only bind
+    // so a compromised container process cannot modify preCommands (run as root).
+    const servicesVolume = `\n      - ./instances/${name}/services.json:/home/node/.openclaw/services.json:ro`;
+
     compose += `  ${name}:
     image: ${image}
     container_name: ${project}-${name}
@@ -112,11 +116,21 @@ services:
     environment:
       HOME: /home/node${nodeOptionsLine}
     volumes:
-      - ./instances/${name}:/home/node/.openclaw${skillsVolume}${extraVolumes}
+      - ./instances/${name}:/home/node/.openclaw${skillsVolume}${extraVolumes}${servicesVolume}
       - ${entrypointVolume}
     ports:
       - "127.0.0.1:${inst.port}:18789"
-    restart: unless-stopped${deployBlock}
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETUID
+      - SETGID${deployBlock}
     networks:
       - ${networkName}
 

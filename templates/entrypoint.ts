@@ -157,6 +157,16 @@ function linkSkillBinaries(): void {
 }
 
 /**
+ * Validate that a preCommand only uses allowed patterns.
+ * preCommands run as root, so we restrict them to known-safe operations.
+ */
+const ALLOWED_PRECMD = /^chmod\s+-R\s+a\+rw\s+\/home\/node\/[^\s;&|`$()]+(\s+2>\/dev\/null\s+\|\|\s+true)?$/;
+
+function validatePreCommand(cmd: string): boolean {
+  return ALLOWED_PRECMD.test(cmd.trim());
+}
+
+/**
  * Start a service and restart it on exit.
  * Runs as node (uid=1000). If preCommand is set, runs it as root first.
  */
@@ -174,8 +184,13 @@ function startService(svc: ServiceConfig, attempt = 0): void {
   }
 
   // Pre-command: runs as root before spawning (e.g. chmod for VirtioFS bind mounts)
+  // Validated against allowlist to prevent privilege escalation via services.json tampering.
   if (svc.preCommand) {
-    spawnSync("sh", ["-c", svc.preCommand], { stdio: "inherit" });
+    if (!validatePreCommand(svc.preCommand)) {
+      console.error(`[supervisor] BLOCKED: ${svc.name} has unsafe preCommand: ${svc.preCommand}`);
+    } else {
+      spawnSync("sh", ["-c", svc.preCommand], { stdio: "inherit" });
+    }
   }
 
   const child = spawn("sh", ["-c", svc.command], {

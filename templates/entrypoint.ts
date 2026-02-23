@@ -223,8 +223,18 @@ function startAllServices(): void {
 process.on("SIGTERM", () => process.exit(0));
 process.on("SIGINT", () => process.exit(0));
 
+function cleanStaleLocks(): void {
+  const wacliDir = `${CONFIG_DIR}/wacli`;
+  const lockFile = `${wacliDir}/LOCK`;
+  if (existsSync(lockFile)) {
+    rmSync(lockFile);
+    console.log("[entrypoint] removed stale wacli LOCK");
+  }
+}
+
 function main(): void {
   setupSkills();
+  cleanStaleLocks();
   startAllServices();
 }
 

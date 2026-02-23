@@ -3,6 +3,7 @@
  */
 
 import { existsSync } from "node:fs";
+import { execSync } from "node:child_process";
 import { join } from "node:path";
 import chalk from "chalk";
 import type { ConfigPaths, InfraConfig } from "../lib/config.js";
@@ -34,4 +35,8 @@ export async function buildCommand(
     // Just build the requested image
     buildImage(imageName, repoPath, { noCache });
   }
+
+  // Clean up dangling images left over from the build
+  console.log(chalk.dim("\nCleaning up dangling images..."));
+  execSync("docker image prune -f", { stdio: "inherit", encoding: "utf-8" });
 }

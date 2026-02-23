@@ -10,6 +10,8 @@ import { homedir, tmpdir } from "node:os";
 import chalk from "chalk";
 import type { ConfigPaths, InfraConfig } from "./config.js";
 
+const buildEnv = { ...process.env, DOCKER_BUILDKIT: "1" };
+
 export interface DockerStatus {
   installed: boolean;
   running: boolean;
@@ -354,6 +356,7 @@ export function buildImage(imageName: string, openclawPath: string, opts: { noCa
     cwd: openclawPath,
     stdio: "inherit",
     encoding: "utf-8",
+    env: buildEnv,
   });
 
   console.log(chalk.green(`  Image ${imageName} built successfully`));
@@ -387,6 +390,7 @@ USER node
       cwd: buildCtxDir,
       stdio: "inherit",
       encoding: "utf-8",
+      env: buildEnv,
     });
     console.log(chalk.green(`  Image polyclaw:base built successfully`));
   } finally {
@@ -412,6 +416,7 @@ export function buildExtendedImage(imageName: string, baseDir: string): void {
     cwd: baseDir,
     stdio: "inherit",
     encoding: "utf-8",
+    env: buildEnv,
   });
 
   console.log(chalk.green(`  Image ${imageName} built successfully`));

@@ -140,11 +140,12 @@ program
 program
   .command("stop [instance]")
   .description("Stop one instance (e.g. 'ale') or all containers")
-  .action((instance) => {
+  .option("--keep-images", "Keep local images after stopping (default: remove them)")
+  .action((instance, options) => {
     requireDocker();
     const opts = program.opts();
     const paths = resolveConfigPaths(opts.config);
-    stopCommand(paths, instance);
+    stopCommand(paths, instance, { keepImages: options.keepImages });
   });
 
 // logs command

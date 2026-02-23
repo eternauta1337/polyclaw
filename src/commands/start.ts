@@ -13,8 +13,17 @@ import { configureCommand } from "./configure.js";
 export async function startCommand(
   config: InfraConfig,
   paths: ConfigPaths,
-  options: { detach?: boolean; openclawPath?: string; recreate?: boolean } = {}
+  options: { detach?: boolean; openclawPath?: string; recreate?: boolean; instance?: string } = {}
 ): Promise<void> {
+  // Validate instance name if provided
+  if (options.instance) {
+    const instanceNames = Object.keys(config.instances);
+    if (!instanceNames.includes(options.instance)) {
+      console.error(chalk.red(`Error: Instance '${options.instance}' not found.`));
+      console.error(`Available instances: ${instanceNames.join(", ")}`);
+      process.exit(1);
+    }
+  }
   // Ensure Docker image exists
   const imageName = config.docker?.image || DEFAULTS.image;
   await ensureImage(imageName, { openclawPath: options.openclawPath, baseDir: paths.baseDir, dockerConfig: config.docker });
@@ -42,6 +51,10 @@ export async function startCommand(
   }
   if (options.recreate) {
     args.push("--force-recreate");
+  }
+
+  if (options.instance) {
+    args.push(options.instance);
   }
 
   dockerCompose(args, paths);

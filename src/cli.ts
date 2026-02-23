@@ -78,12 +78,12 @@ function withConfig(
 
 // start command
 program
-  .command("start")
+  .command("start [instance]")
   .description("Sync config + start containers. Use after: polyclaw.json5 changes, polyclaw build, or first run.")
   .option("--no-detach", "Run in foreground instead of detached mode")
   .option("--recreate", "Force recreate all containers (use after env changes that require restart)")
   .option("--openclaw-path <path>", "Path to openclaw repo (for building image)")
-  .action(async (options) => {
+  .action(async (instance, options) => {
     requireDocker();
     const opts = program.opts();
     const paths = resolveConfigPaths(opts.config);
@@ -99,6 +99,7 @@ program
       detach: options.detach,
       recreate: options.recreate,
       openclawPath: options.openclawPath,
+      instance,
     });
   });
 

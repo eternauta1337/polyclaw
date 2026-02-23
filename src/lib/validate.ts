@@ -66,13 +66,12 @@ process.stdout.write(JSON.stringify(results));
     const mapped: Record<string, ValidationResult> = {};
     names.forEach((name, i) => (mapped[name] = results[i]));
     return mapped;
-  } catch {
-    // Docker not running, image not found, or tsx error — skip validation
-    console.warn(chalk.yellow(`  Warning: schema validation unavailable (Docker or image not ready)`));
-    console.warn(chalk.dim(`  Run 'polyclaw build' to rebuild the image`));
-    const skipped: Record<string, ValidationResult> = {};
-    names.forEach((name) => (skipped[name] = { ok: true, skipped: true, issues: [] }));
-    return skipped;
+  } catch (err: any) {
+    const stderr = err?.stderr?.toString?.()?.trim() || err?.message || "unknown error";
+    console.error(chalk.red(`\n  Schema validation failed:`));
+    console.error(chalk.red(`  ${stderr}`));
+    console.error(chalk.dim(`  Ensure Docker is running and image "${imageName}" exists ('polyclaw build')`));
+    process.exit(1);
   }
 }
 

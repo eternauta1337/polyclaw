@@ -1,6 +1,6 @@
 {
   "name": "polyclaw",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Run multiple OpenClaw instances with Docker",
   "type": "module",
   "main": "./dist/index.js",

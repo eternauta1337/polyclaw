@@ -45,6 +45,8 @@ interface ServiceConfig {
   preCommand?: string;
   // Seconds to wait before restarting after exit. Default: 5.
   restartDelay?: number;
+  // Seconds to wait before the initial start. Default: 0.
+  startDelay?: number;
 }
 
 function setupSkills(): void {
@@ -203,6 +205,10 @@ function startService(svc: ServiceConfig, attempt = 0): void {
   console.log(`[supervisor] started: ${svc.name} (pid=${child.pid})`);
 
   child.on("exit", (code, signal) => {
+    if (code === 0) {
+      console.log(`[supervisor] ${svc.name} exited cleanly (code=0), not restarting`);
+      return;
+    }
     const delay = svc.restartDelay ?? 5;
     console.log(`[supervisor] ${svc.name} exited (code=${code ?? signal}), restarting in ${delay}s`);
     setTimeout(() => startService(svc), delay * 1000);
@@ -227,7 +233,13 @@ function startAllServices(): void {
       );
       for (const svc of services) {
         console.log(`[supervisor] registered: ${svc.name}`);
-        startService(svc);
+        const delay = svc.startDelay ?? 0;
+        if (delay > 0) {
+          console.log(`[supervisor] ${svc.name}: delaying initial start by ${delay}s`);
+          setTimeout(() => startService(svc), delay * 1000);
+        } else {
+          startService(svc);
+        }
       }
     } catch {
       console.warn("[supervisor] failed to parse services.json, skipping custom services");
@@ -247,9 +259,16 @@ function cleanStaleLocks(): void {
   }
 }
 
-function main(): void {
+async function main(): Promise<void> {
   setupSkills();
   cleanStaleLocks();
+
+  const startupDelay = parseInt(process.env.STARTUP_DELAY || "0", 10);
+  if (startupDelay > 0) {
+    console.log(`[entrypoint] waiting ${startupDelay}s (staggered startup)`);
+    await new Promise((resolve) => setTimeout(resolve, startupDelay * 1000));
+  }
+
   startAllServices();
 }
 

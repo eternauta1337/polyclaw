@@ -24,6 +24,9 @@ export interface ServiceConfig {
   preCommand?: string;
   // Seconds to wait before restarting after exit. Default: 5.
   restartDelay?: number;
+  // Seconds to wait before the initial start. Default: 0.
+  // Only applies to the first start, not restarts.
+  startDelay?: number;
 }
 
 export interface InstanceConfig {
@@ -64,6 +67,9 @@ export interface InfraConfig {
     resources?: DockerResources;
     // Network mode: "isolated" (one network per instance) or "shared" (single network)
     network?: "isolated" | "shared";
+    // Seconds between each container startup (staggered). Default: 0 (all at once).
+    // Instance N gets STARTUP_DELAY = N * startupDelay seconds.
+    startupDelay?: number;
   };
   // Project-level workspace files synced to all instances
   workspace?: {

@@ -53,6 +53,9 @@ name: ${project}
 services:
 `;
 
+  const startupDelay = config.docker?.startupDelay ?? 0;
+  let instanceIndex = 0;
+
   for (const [name, inst] of Object.entries(config.instances)) {
     const skillsVolume = skillsPath
       ? `\n      - ${skillsPath}:/skills-custom:ro`
@@ -87,6 +90,12 @@ services:
       ? `\n      NODE_OPTIONS: "${nodeOptions}"`
       : "";
 
+    // Staggered startup delay (seconds) — instance N waits N * startupDelay
+    const containerDelay = instanceIndex * startupDelay;
+    const startupDelayLine = containerDelay > 0
+      ? `\n      STARTUP_DELAY: "${containerDelay}"`
+      : "";
+
     // Docker resource limits
     const resources = config.docker?.resources;
     let deployBlock = "";
@@ -114,7 +123,7 @@ services:
     env_file:
       - .env/.env.shared${envFileLines}
     environment:
-      HOME: /home/node${nodeOptionsLine}
+      HOME: /home/node${nodeOptionsLine}${startupDelayLine}
     volumes:
       - ./instances/${name}:/home/node/.openclaw${skillsVolume}${extraVolumes}${servicesVolume}
       - ${entrypointVolume}
@@ -135,6 +144,7 @@ services:
       - ${networkName}
 
 `;
+    instanceIndex++;
   }
 
   // Networks

@@ -36,7 +36,8 @@ export async function buildCommand(
     buildImage(imageName, repoPath, { noCache });
   }
 
-  // Clean up dangling images left over from the build
-  console.log(chalk.dim("\nCleaning up dangling images..."));
+  // Clean up dangling images and build cache left over from the build
+  console.log(chalk.dim("\nCleaning up dangling images and build cache..."));
   execSync("docker image prune -f", { stdio: "inherit", encoding: "utf-8" });
+  execSync("docker builder prune -f", { stdio: "inherit", encoding: "utf-8" });
 }

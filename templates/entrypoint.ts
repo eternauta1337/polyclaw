@@ -13,12 +13,14 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import {
+  chmodSync,
   existsSync,
   lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
   realpathSync,
+  renameSync,
   rmSync,
   symlinkSync,
 } from "node:fs";
@@ -250,6 +252,28 @@ function startAllServices(): void {
 process.on("SIGTERM", () => process.exit(0));
 process.on("SIGINT", () => process.exit(0));
 
+/**
+ * Migrate legacy state that `openclaw doctor` would otherwise prompt for.
+ * Runs once per container start; skips silently if already migrated.
+ */
+function migrateDoctor(): void {
+  // 1. Telegram pairing allowFrom: renamed for multi-agent support
+  const credDir = `${CONFIG_DIR}/credentials`;
+  const oldAllowFrom = `${credDir}/telegram-allowFrom.json`;
+  const newAllowFrom = `${credDir}/telegram-default-allowFrom.json`;
+  if (existsSync(oldAllowFrom) && !existsSync(newAllowFrom)) {
+    renameSync(oldAllowFrom, newAllowFrom);
+    console.log("[entrypoint] migrated telegram-allowFrom.json → telegram-default-allowFrom.json");
+  }
+
+  // 2. Tighten ~/.openclaw permissions (best-effort; no-op on macOS VirtioFS)
+  try {
+    chmodSync(CONFIG_DIR, 0o700);
+  } catch {
+    // VirtioFS or read-only — ignore
+  }
+}
+
 function cleanStaleLocks(): void {
   const wacliDir = `${CONFIG_DIR}/wacli`;
   const lockFile = `${wacliDir}/LOCK`;
@@ -262,6 +286,7 @@ function cleanStaleLocks(): void {
 async function main(): Promise<void> {
   setupSkills();
   cleanStaleLocks();
+  migrateDoctor();
 
   const startupDelay = parseInt(process.env.STARTUP_DELAY || "0", 10);
   if (startupDelay > 0) {

@@ -45,7 +45,7 @@ export async function startCommand(
 
   // Start containers
   console.log(chalk.green("=== Starting containers ==="));
-  const args = ["up"];
+  const args = ["up", "--remove-orphans"];
   if (options.detach !== false) {
     args.push("-d");
   }

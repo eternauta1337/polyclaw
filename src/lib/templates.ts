@@ -131,26 +131,41 @@ export function createInitialConfig(
 /** Read the agents list from global config. */
 function getAgentsList(
   config: InfraConfig,
-): Array<{ id: string; default?: boolean }> {
+): Array<{ id: string; default?: boolean; workspace?: string }> {
   return (
     (getPath(config.config || {}, "agents.list") as
-      | Array<{ id: string; default?: boolean }>
+      | Array<{ id: string; default?: boolean; workspace?: string }>
       | undefined) ?? []
   );
 }
 
 /**
+ * Derive the local workspace directory name for an agent.
+ *
+ * If the agent has an explicit `workspace` path (container path like
+ * "/home/node/.openclaw/workspace-user"), use its basename.
+ * Otherwise, fall back to `workspace-{agentId}`.
+ */
+function agentWorkspaceDirName(agent: { id: string; workspace?: string }): string {
+  if (agent.workspace) {
+    // Extract last path segment: "/home/node/.openclaw/workspace-user" → "workspace-user"
+    const segments = agent.workspace.replace(/\/+$/, "").split("/");
+    return segments[segments.length - 1];
+  }
+  return `workspace-${agent.id}`;
+}
+
+/**
  * Return workspace directories for an instance.
- * All workspaces live at instances/{name}/workspace-{agentId}/.
  * Creates dirs if they don't exist.
  */
 function getInstanceWorkspaceDirs(
   instanceDir: string,
-  agents: Array<{ id: string }>,
+  agents: Array<{ id: string; workspace?: string }>,
 ): string[] {
   const dirs: string[] = [];
   for (const agent of agents) {
-    const dir = join(instanceDir, `workspace-${agent.id}`);
+    const dir = join(instanceDir, agentWorkspaceDirName(agent));
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
     }

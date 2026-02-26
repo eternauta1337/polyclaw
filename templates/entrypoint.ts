@@ -27,7 +27,6 @@ import {
 import { resolve } from "node:path";
 
 const CONFIG_DIR = "/home/node/.openclaw";
-const WORKSPACE_DIR = `${CONFIG_DIR}/workspace`;
 // Use managed skills dir (shared across all agents) instead of workspace-specific
 const SKILLS_DIR = `${CONFIG_DIR}/skills`;
 const BUNDLED_SKILLS = "/app/skills";
@@ -52,11 +51,6 @@ interface ServiceConfig {
 }
 
 function setupSkills(): void {
-  // Create workspace directory if it doesn't exist
-  if (!existsSync(WORKSPACE_DIR)) {
-    mkdirSync(WORKSPACE_DIR, { recursive: true });
-  }
-
   // Clean skills directory if exists (including broken symlinks)
   try {
     lstatSync(SKILLS_DIR); // Detects broken symlinks (existsSync doesn't)

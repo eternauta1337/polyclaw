@@ -231,7 +231,7 @@ function syncWorkspaceFile(sourcePath: string, targetPath: string): void {
   const sourceMatch = sourceContent.match(MOTHER_BLOCK_RE);
 
   if (!sourceMatch) {
-    // No <mother> block in source — legacy full-copy behavior
+    // No Mother section in source — legacy full-copy behavior
     copyFileSync(sourcePath, targetPath);
     return;
   }
@@ -245,11 +245,11 @@ function syncWorkspaceFile(sourcePath: string, targetPath: string): void {
   const targetContent = readFileSync(targetPath, "utf-8");
 
   if (MOTHER_BLOCK_RE.test(targetContent)) {
-    // Target has a <mother> block — replace only that section
+    // Target has Mother section — replace only that section
     const updated = targetContent.replace(MOTHER_BLOCK_RE, sourceMatch[0]);
     writeFileSync(targetPath, updated, "utf-8");
   } else {
-    // Target exists but has no <mother> block — migration: overwrite entirely
+    // Target exists but has no Mother section — migration: overwrite entirely
     writeFileSync(targetPath, sourceContent, "utf-8");
   }
 }

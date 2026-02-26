@@ -2,7 +2,7 @@
  * Template file management
  */
 
-import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync, copyFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync, copyFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import chalk from "chalk";
@@ -199,10 +199,52 @@ export function syncInstanceFolders(
   console.log(chalk.green("Sync completed."));
 }
 
+const MOTHER_BLOCK_RE = /<mother>\n?([\s\S]*?)\n?<\/mother>/;
+
+/**
+ * Sync a single workspace file to a target path.
+ *
+ * If the source contains a <mother>...</mother> block:
+ *   - Target doesn't exist → copy the full source (seeds template + mother block)
+ *   - Target exists with <mother> block → replace only the <mother> block, preserve user content
+ *   - Target exists without <mother> block → overwrite entirely (migration from old format)
+ *
+ * If the source has no <mother> block: always copy entirely (legacy behavior).
+ */
+function syncWorkspaceFile(sourcePath: string, targetPath: string): void {
+  const sourceContent = readFileSync(sourcePath, "utf-8");
+  const sourceMatch = sourceContent.match(MOTHER_BLOCK_RE);
+
+  if (!sourceMatch) {
+    // No <mother> block in source — legacy full-copy behavior
+    copyFileSync(sourcePath, targetPath);
+    return;
+  }
+
+  if (!existsSync(targetPath)) {
+    // New instance — seed the full template
+    writeFileSync(targetPath, sourceContent, "utf-8");
+    return;
+  }
+
+  const targetContent = readFileSync(targetPath, "utf-8");
+
+  if (MOTHER_BLOCK_RE.test(targetContent)) {
+    // Target has a <mother> block — replace only that section
+    const updated = targetContent.replace(MOTHER_BLOCK_RE, sourceMatch[0]);
+    writeFileSync(targetPath, updated, "utf-8");
+  } else {
+    // Target exists but has no <mother> block — migration: overwrite entirely
+    writeFileSync(targetPath, sourceContent, "utf-8");
+  }
+}
+
 /**
  * Sync project-level workspace files to all instance workspaces.
- * Copies every file from the project workspace dir to each agent's workspace,
- * overwriting existing files. Instance-only files are never touched.
+ *
+ * Files with <mother>...</mother> blocks get smart-merged: only the deployer
+ * section is updated, preserving user/agent content outside the tags.
+ * Files without <mother> blocks are copied entirely (legacy behavior).
  */
 export function syncWorkspaceFiles(
   config: InfraConfig,
@@ -233,7 +275,7 @@ export function syncWorkspaceFiles(
 
     for (const dir of workspaceDirs) {
       for (const file of files) {
-        copyFileSync(join(projectWorkspaceDir, file), join(dir, file));
+        syncWorkspaceFile(join(projectWorkspaceDir, file), join(dir, file));
       }
     }
 

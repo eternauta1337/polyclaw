@@ -214,17 +214,17 @@ export function syncInstanceFolders(
   console.log(chalk.green("Sync completed."));
 }
 
-const MOTHER_BLOCK_RE = /<mother>\n?([\s\S]*?)\n?<\/mother>/;
+const MOTHER_BLOCK_RE = /^## Mother\s*\n([\s\S]*?)<!-- \/mother -->/m;
 
 /**
  * Sync a single workspace file to a target path.
  *
- * If the source contains a <mother>...</mother> block:
- *   - Target doesn't exist → copy the full source (seeds template + mother block)
- *   - Target exists with <mother> block → replace only the <mother> block, preserve user content
- *   - Target exists without <mother> block → overwrite entirely (migration from old format)
+ * If the source contains a "## Mother ... <!-- /mother -->" section:
+ *   - Target doesn't exist → copy the full source (seeds template + Mother section)
+ *   - Target exists with Mother section → replace only that section, preserve user content
+ *   - Target exists without Mother section → overwrite entirely (migration from old format)
  *
- * If the source has no <mother> block: always copy entirely (legacy behavior).
+ * If the source has no Mother section: always copy entirely (legacy behavior).
  */
 function syncWorkspaceFile(sourcePath: string, targetPath: string): void {
   const sourceContent = readFileSync(sourcePath, "utf-8");
@@ -257,9 +257,9 @@ function syncWorkspaceFile(sourcePath: string, targetPath: string): void {
 /**
  * Sync project-level workspace files to all instance workspaces.
  *
- * Files with <mother>...</mother> blocks get smart-merged: only the deployer
- * section is updated, preserving user/agent content outside the tags.
- * Files without <mother> blocks are copied entirely (legacy behavior).
+ * Files with a "## Mother ... <!-- /mother -->" section get smart-merged:
+ * only the Mother section is updated, preserving user/agent content outside it.
+ * Files without a Mother section are copied entirely (legacy behavior).
  */
 export function syncWorkspaceFiles(
   config: InfraConfig,
